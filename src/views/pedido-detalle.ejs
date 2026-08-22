@@ -1,0 +1,21 @@
+<%- include('partials/header') %>
+
+<h2>Pedido #<%= pedidoId %></h2>
+<p><a href="/pedidos">&larr; Volver a Pedidos</a></p>
+<table>
+  <thead>
+    <tr><th>Artículo</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal</th></tr>
+  </thead>
+  <tbody>
+    <% items.forEach(i => { %>
+      <tr>
+        <td><%= i.nombre %></td>
+        <td><%= i.cantidad %></td>
+        <td>$<%= Number(i.precioUnitario).toLocaleString('es-AR') %></td>
+        <td>$<%= Number(i.subtotal).toLocaleString('es-AR') %></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table>
+
+<%- include('partials/footer') %>

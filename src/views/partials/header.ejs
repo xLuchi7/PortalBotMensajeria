@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portal de Clientes</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+</head>
+<body>
+<header class="container">
+  <nav>
+    <ul><li><strong><%= usuario.razonSocial %></strong></li></ul>
+    <ul>
+      <li><a href="/mensajes">Mensajes</a></li>
+      <li><a href="/escalamientos">Escalamientos</a></li>
+      <li><a href="/pedidos">Pedidos</a></li>
+    </ul>
+    <ul>
+      <li>
+        <form method="POST" action="/logout" style="margin: 0;">
+          <button type="submit" class="secondary outline">Salir</button>
+        </form>
+      </li>
+    </ul>
+  </nav>
+</header>
+<main class="container">

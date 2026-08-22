@@ -1,0 +1,30 @@
+<%- include('partials/header') %>
+
+<h2>Escalamientos</h2>
+<table>
+  <thead>
+    <tr><th>Fecha</th><th>Usuario</th><th>Motivo</th><th>Estado</th><th></th></tr>
+  </thead>
+  <tbody>
+    <% escalamientos.forEach(e => { %>
+      <tr>
+        <td><%= new Date(e.fecha).toLocaleString('es-AR') %></td>
+        <td><%= e.userId %></td>
+        <td><%= e.motivo %></td>
+        <td><%= e.resuelto ? 'Resuelto' : 'Pendiente' %></td>
+        <td>
+          <% if (!e.resuelto) { %>
+            <form method="POST" action="/escalamientos/<%= e.id %>/resolver" style="margin: 0;">
+              <button type="submit" class="outline">Marcar resuelto</button>
+            </form>
+          <% } %>
+        </td>
+      </tr>
+    <% }) %>
+    <% if (!escalamientos.length) { %>
+      <tr><td colspan="5">No hay escalamientos.</td></tr>
+    <% } %>
+  </tbody>
+</table>
+
+<%- include('partials/footer') %>

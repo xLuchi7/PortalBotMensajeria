@@ -1,0 +1,24 @@
+<%- include('partials/header') %>
+
+<h2>Mensajes</h2>
+<table>
+  <thead>
+    <tr><th>Fecha</th><th>Usuario</th><th>Plataforma</th><th>Quién</th><th>Mensaje</th></tr>
+  </thead>
+  <tbody>
+    <% mensajes.forEach(m => { %>
+      <tr<%= m.esError ? ' style="background: #fdecea;"' : '' %>>
+        <td><%= new Date(m.fecha).toLocaleString('es-AR') %></td>
+        <td><%= m.userId %></td>
+        <td><%= m.platform %></td>
+        <td><%= m.role === 'user' ? 'Cliente' : 'Bot' %></td>
+        <td><%= m.content %></td>
+      </tr>
+    <% }) %>
+    <% if (!mensajes.length) { %>
+      <tr><td colspan="5">Todavía no hay mensajes.</td></tr>
+    <% } %>
+  </tbody>
+</table>
+
+<%- include('partials/footer') %>

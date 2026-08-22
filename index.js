@@ -1,4 +1,10 @@
 require('dotenv').config();
+
+// Las reglas de firewall de Azure SQL son solo IPv4 — si Railway resuelve el
+// hostname por IPv6, la conexión no matchea ninguna regla y se cae en timeout
+// silencioso en vez de un rechazo directo. Forzamos IPv4 primero.
+require('dns').setDefaultResultOrder('ipv4first');
+
 const express = require('express');
 const session = require('express-session');
 const config = require('./src/config');

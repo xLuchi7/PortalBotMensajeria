@@ -3,7 +3,7 @@
 <div class="topbar"><h1>Mensajes</h1></div>
 
 <div class="card">
-  <div class="card-header"><strong><%= total %></strong>&nbsp;mensaje<%= total === 1 ? '' : 's' %></div>
+  <div class="card-header"><span><strong><%= total %></strong>&nbsp;mensaje<%= total === 1 ? '' : 's' %></span></div>
   <% if (!rows.length) { %>
     <div class="empty-state">
       <%- icons.inbox %>
@@ -13,7 +13,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Fecha</th><th>Usuario</th><th>Plataforma</th><th>Quién</th><th>Mensaje</th></tr>
+          <tr><th>Fecha</th><th>Usuario</th><th>Plataforma</th><th class="col-center">Quién</th><th>Mensaje</th></tr>
         </thead>
         <tbody>
           <% rows.forEach(m => { %>
@@ -21,7 +21,7 @@
               <td><%= new Date(m.fecha).toLocaleString('es-AR') %></td>
               <td><%= m.userId %></td>
               <td><%= m.platform %></td>
-              <td>
+              <td class="col-center">
                 <span class="badge <%= m.role === 'user' ? 'badge-cliente' : 'badge-info' %>">
                   <%= m.role === 'user' ? 'Cliente' : 'Bot' %>
                 </span>

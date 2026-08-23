@@ -16,7 +16,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Fecha</th><th>Usuario</th><th>Motivo</th><th>Estado</th><th></th></tr>
+          <tr><th>Fecha</th><th>Usuario</th><th>Motivo</th><th class="col-center">Estado</th><th></th></tr>
         </thead>
         <tbody>
           <% escalamientos.forEach(e => { %>
@@ -24,7 +24,7 @@
               <td><%= new Date(e.fecha).toLocaleString('es-AR') %></td>
               <td><%= e.userId %></td>
               <td><%= e.motivo %></td>
-              <td>
+              <td class="col-center">
                 <span class="badge <%= e.resuelto ? 'badge-resuelto' : 'badge-pendiente' %>">
                   <%= e.resuelto ? 'Resuelto' : 'Pendiente' %>
                 </span>

@@ -46,4 +46,6 @@ module.exports = {
   bot: wrap(
     '<rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1.2" fill="currentColor" stroke="none"/><line x1="12" y1="8" x2="12" y2="4"/><circle cx="12" cy="3" r="1" fill="currentColor" stroke="none"/><line x1="1" y1="13" x2="4" y2="13"/><line x1="20" y1="13" x2="23" y2="13"/>'
   ),
+
+  refresh: wrap('<path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 4 3 9 8 9"/>'),
 };

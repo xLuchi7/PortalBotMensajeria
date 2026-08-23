@@ -24,9 +24,67 @@ router.get('/clientes', requireAdmin, async (req, res, next) => {
   }
 });
 
+router.get('/clientes/nuevo', requireAdmin, (req, res) => {
+  res.render('cliente-form', { usuario: req.session.usuario, editar: null, error: null });
+});
+
+router.post('/clientes/nuevo', requireAdmin, async (req, res, next) => {
+  try {
+    const { razonSocial, cuit, telefono, email, zonaHoraria } = req.body;
+    await clientes.crearCliente({ razonSocial, cuit, telefono, email, zonaHoraria });
+    res.redirect('/clientes');
+  } catch (err) {
+    if (err.number === 2627 || err.number === 2601) {
+      return res.render('cliente-form', {
+        usuario: req.session.usuario,
+        editar: null,
+        error: 'Ya existe un Cliente con ese CUIT o teléfono.',
+      });
+    }
+    next(err);
+  }
+});
+
+router.get('/clientes/:clienteId/editar', requireAdmin, async (req, res, next) => {
+  try {
+    const editar = await clientes.obtenerCliente(req.params.clienteId);
+    if (!editar) return res.status(404).send('Cliente no encontrado.');
+    res.render('cliente-form', { usuario: req.session.usuario, editar, error: null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/clientes/:clienteId/editar', requireAdmin, async (req, res, next) => {
+  try {
+    const { razonSocial, cuit, telefono, email, zonaHoraria } = req.body;
+    await clientes.actualizarCliente(req.params.clienteId, { razonSocial, cuit, telefono, email, zonaHoraria });
+    res.redirect('/clientes');
+  } catch (err) {
+    if (err.number === 2627 || err.number === 2601) {
+      const editar = await clientes.obtenerCliente(req.params.clienteId);
+      return res.render('cliente-form', {
+        usuario: req.session.usuario,
+        editar,
+        error: 'Ya existe otro Cliente con ese CUIT o teléfono.',
+      });
+    }
+    next(err);
+  }
+});
+
 router.post('/clientes/:clienteId/borrar', requireAdmin, async (req, res, next) => {
   try {
     await clientes.desactivarCliente(req.params.clienteId);
+    res.redirect('/clientes');
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/clientes/:clienteId/activar', requireAdmin, async (req, res, next) => {
+  try {
+    await clientes.activarCliente(req.params.clienteId);
     res.redirect('/clientes');
   } catch (err) {
     next(err);

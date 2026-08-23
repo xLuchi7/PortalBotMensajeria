@@ -6,7 +6,7 @@
 </div>
 
 <div class="card">
-  <div class="card-header"><strong><%= usuarios.length %></strong>&nbsp;usuario<%= usuarios.length === 1 ? '' : 's' %></div>
+  <div class="card-header"><span><strong><%= usuarios.length %></strong>&nbsp;usuario<%= usuarios.length === 1 ? '' : 's' %></span></div>
   <% if (!usuarios.length) { %>
     <div class="empty-state">
       <%- icons.users %>
@@ -16,15 +16,15 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Email</th><th>Rol</th><th>Cliente</th><th>Estado</th><th></th></tr>
+          <tr><th>Email</th><th class="col-center">Rol</th><th>Cliente</th><th class="col-center">Estado</th><th></th></tr>
         </thead>
         <tbody>
           <% usuarios.forEach(u => { %>
             <tr>
               <td><%= u.email %></td>
-              <td><span class="badge badge-<%= u.rol %>"><%= u.rol %></span></td>
+              <td class="col-center"><span class="badge badge-<%= u.rol %>"><%= u.rol %></span></td>
               <td><%= u.razonSocial || '-' %></td>
-              <td><span class="badge <%= u.activo ? 'badge-activo' : 'badge-inactivo' %>"><%= u.activo ? 'Activo' : 'Inactivo' %></span></td>
+              <td class="col-center"><span class="badge <%= u.activo ? 'badge-activo' : 'badge-inactivo' %>"><%= u.activo ? 'Activo' : 'Inactivo' %></span></td>
               <td>
                 <div class="cell-actions">
                   <a href="/usuarios/<%= u.id %>/editar" class="icon-btn" title="Editar"><%- icons.edit %></a>

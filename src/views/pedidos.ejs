@@ -16,7 +16,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Fecha</th><th>Usuario</th><th>Total</th><th>Estado</th><th>Notas</th><th></th></tr>
+          <tr><th>Fecha</th><th>Usuario</th><th>Total</th><th class="col-center">Estado</th><th>Notas</th><th></th></tr>
         </thead>
         <tbody>
           <% pedidos.forEach(p => { %>
@@ -24,7 +24,7 @@
               <td><%= new Date(p.fecha).toLocaleString('es-AR') %></td>
               <td><%= p.userId %></td>
               <td>$<%= Number(p.total).toLocaleString('es-AR') %></td>
-              <td>
+              <td class="col-center">
                 <form method="POST" action="/clientes/<%= clienteId %>/pedidos/<%= p.id %>/estado" class="inline">
                   <select name="estado" onchange="this.form.submit()" class="badge-select badge-<%= p.estado %>">
                     <option value="pendiente" <%= p.estado === 'pendiente' ? 'selected' : '' %>>Pendiente</option>

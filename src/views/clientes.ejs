@@ -1,6 +1,9 @@
 <%- include('partials/header') %>
 
-<div class="topbar"><h1>Clientes</h1></div>
+<div class="topbar">
+  <h1>Clientes</h1>
+  <a href="/clientes/nuevo" class="btn btn-primary"><%- icons.plus %> Nuevo cliente</a>
+</div>
 
 <div class="card">
   <div class="card-header">
@@ -16,7 +19,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Razón social</th><th>CUIT</th><th>Teléfono</th><th>Email</th><th>Estado</th><th></th></tr>
+          <tr><th>Razón social</th><th>CUIT</th><th>Teléfono</th><th>Email</th><th class="col-center">Estado</th><th></th></tr>
         </thead>
         <tbody>
           <% clientes.forEach(c => { %>
@@ -25,16 +28,21 @@
               <td><%= c.cuit %></td>
               <td><%= c.telefono %></td>
               <td><%= c.email || '-' %></td>
-              <td><span class="badge <%= c.activo ? 'badge-activo' : 'badge-inactivo' %>"><%= c.activo ? 'Activo' : 'Inactivo' %></span></td>
+              <td class="col-center"><span class="badge <%= c.activo ? 'badge-activo' : 'badge-inactivo' %>"><%= c.activo ? 'Activo' : 'Inactivo' %></span></td>
               <td>
                 <div class="cell-actions">
                   <a href="/clientes/<%= c.id %>/mensajes" class="icon-btn" title="Mensajes"><%- icons.message %></a>
                   <a href="/clientes/<%= c.id %>/pedidos" class="icon-btn" title="Pedidos"><%- icons.truck %></a>
                   <a href="/clientes/<%= c.id %>/escalamientos" class="icon-btn" title="Escalamientos"><%- icons.alertTriangle %></a>
+                  <a href="/clientes/<%= c.id %>/editar" class="icon-btn" title="Editar"><%- icons.edit %></a>
                   <% if (c.activo) { %>
                     <form method="POST" action="/clientes/<%= c.id %>/borrar" class="inline"
                           onsubmit="return confirm('¿Desactivar a <%= c.razonSocial %>? Deja de poder usar el bot y el portal, pero no se borra su historial.');">
                       <button type="submit" class="icon-btn danger" title="Desactivar"><%- icons.trash %></button>
+                    </form>
+                  <% } else { %>
+                    <form method="POST" action="/clientes/<%= c.id %>/activar" class="inline">
+                      <button type="submit" class="icon-btn" title="Reactivar"><%- icons.refresh %></button>
                     </form>
                   <% } %>
                 </div>

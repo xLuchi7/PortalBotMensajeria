@@ -1,0 +1,38 @@
+<%- include('partials/header') %>
+
+<div class="breadcrumb">
+  <a href="/clientes"><%- icons.arrowLeft %> Clientes</a>
+</div>
+<div class="topbar"><h1><%= editar ? 'Editar cliente' : 'Nuevo cliente' %></h1></div>
+
+<% if (error) { %>
+  <div class="alert alert-error"><%= error %></div>
+<% } %>
+
+<div class="card form-card">
+  <form method="POST" action="<%= editar ? `/clientes/${editar.id}/editar` : '/clientes/nuevo' %>">
+    <label>
+      Razón social
+      <input type="text" name="razonSocial" value="<%= editar ? editar.razonSocial : '' %>" required>
+    </label>
+    <label>
+      CUIT
+      <input type="text" name="cuit" value="<%= editar ? editar.cuit : '' %>" required>
+    </label>
+    <label>
+      Teléfono de WhatsApp Business <span class="field-hint">(el bot lo usa para identificar al Cliente; se guardan solo los dígitos)</span>
+      <input type="text" name="telefono" value="<%= editar ? editar.telefono : '' %>" required>
+    </label>
+    <label>
+      Email <span class="field-hint">(opcional)</span>
+      <input type="email" name="email" value="<%= editar && editar.email ? editar.email : '' %>">
+    </label>
+    <label>
+      Zona horaria <span class="field-hint">(para mostrar fechas en el portal)</span>
+      <input type="text" name="zonaHoraria" value="<%= editar ? editar.zonaHoraria : 'Argentina Standard Time' %>">
+    </label>
+    <button type="submit" class="btn btn-primary"><%= editar ? 'Guardar cambios' : 'Crear cliente' %></button>
+  </form>
+</div>
+
+<%- include('partials/footer') %>

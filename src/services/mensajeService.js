@@ -19,7 +19,7 @@ async function listarMensajes(clienteId, page = 1) {
       .query(`
         SELECT
           m.id, m.userId, m.platform, m.role, m.content, m.esError,
-          m.createdAt AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria AS fecha
+          FORMAT(m.createdAt AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy, HH:mm:ss') AS fecha
         FROM Mensajes m
         JOIN Clientes c ON c.id = m.clienteId
         WHERE m.clienteId = @clienteId

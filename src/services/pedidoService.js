@@ -31,7 +31,7 @@ async function listarPedidos(clienteId, page = 1) {
       .query(`
         SELECT
           p.id, p.userId, p.estado, p.total, p.notas,
-          p.fechaAlta AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria AS fecha
+          FORMAT(p.fechaAlta AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy, HH:mm:ss') AS fecha
         FROM Pedidos p
         JOIN Clientes c ON c.id = p.clienteId
         WHERE p.clienteId = @clienteId

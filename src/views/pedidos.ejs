@@ -23,7 +23,7 @@
           <% const ESTADOS_FINALES = ['entregado', 'cancelado']; %>
           <% rows.forEach(p => { %>
             <tr>
-              <td><%= new Date(p.fecha).toLocaleString('es-AR') %></td>
+              <td><%= p.fecha %></td>
               <td><%= p.userId %></td>
               <td>$<%= Number(p.total).toLocaleString('es-AR') %></td>
               <td class="col-center">

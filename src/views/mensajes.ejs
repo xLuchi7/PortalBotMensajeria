@@ -18,7 +18,7 @@
         <tbody>
           <% rows.forEach(m => { %>
             <tr class="<%= m.esError ? 'row-error' : '' %>">
-              <td><%= new Date(m.fecha).toLocaleString('es-AR') %></td>
+              <td><%= m.fecha %></td>
               <td><%= m.userId %></td>
               <td><%= m.platform %></td>
               <td class="col-center">

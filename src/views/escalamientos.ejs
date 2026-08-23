@@ -21,7 +21,7 @@
         <tbody>
           <% rows.forEach(e => { %>
             <tr>
-              <td><%= new Date(e.fecha).toLocaleString('es-AR') %></td>
+              <td><%= e.fecha %></td>
               <td><%= e.userId %></td>
               <td><%= e.motivo %></td>
               <td class="col-center">

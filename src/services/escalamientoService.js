@@ -30,7 +30,7 @@ async function listarEscalamientos(clienteId, page = 1) {
       .query(`
         SELECT
           e.id, e.userId, e.motivo, e.estado,
-          e.fechaAlta AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria AS fecha
+          FORMAT(e.fechaAlta AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy, HH:mm:ss') AS fecha
         FROM Escalamientos e
         JOIN Clientes c ON c.id = e.clienteId
         WHERE e.clienteId = @clienteId

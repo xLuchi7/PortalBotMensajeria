@@ -3,6 +3,10 @@
 <div class="topbar"><h1>Clientes</h1></div>
 
 <div class="card">
+  <div class="card-header">
+    <span><strong><%= clientes.length %></strong>&nbsp;cliente<%= clientes.length === 1 ? '' : 's' %></span>
+    <span><%= clientes.filter(c => c.activo).length %> activos</span>
+  </div>
   <% if (!clientes.length) { %>
     <div class="empty-state">
       <%- icons.briefcase %>

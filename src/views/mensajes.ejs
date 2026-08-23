@@ -3,6 +3,7 @@
 <div class="topbar"><h1>Mensajes</h1></div>
 
 <div class="card">
+  <div class="card-header"><strong><%= mensajes.length %></strong>&nbsp;mensaje<%= mensajes.length === 1 ? '' : 's' %></div>
   <% if (!mensajes.length) { %>
     <div class="empty-state">
       <%- icons.inbox %>

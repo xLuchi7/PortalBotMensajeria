@@ -3,6 +3,10 @@
 <div class="topbar"><h1>Escalamientos</h1></div>
 
 <div class="card">
+  <div class="card-header">
+    <span><strong><%= escalamientos.length %></strong>&nbsp;en total</span>
+    <span><%= escalamientos.filter(e => !e.resuelto).length %> pendientes</span>
+  </div>
   <% if (!escalamientos.length) { %>
     <div class="empty-state">
       <%- icons.alertTriangle %>

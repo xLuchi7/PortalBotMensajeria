@@ -3,6 +3,10 @@
 <div class="topbar"><h1>Pedidos</h1></div>
 
 <div class="card">
+  <div class="card-header">
+    <span><strong><%= pedidos.length %></strong>&nbsp;pedido<%= pedidos.length === 1 ? '' : 's' %></span>
+    <span>Total: <strong>$<%= pedidos.reduce((acc, p) => acc + Number(p.total), 0).toLocaleString('es-AR') %></strong></span>
+  </div>
   <% if (!pedidos.length) { %>
     <div class="empty-state">
       <%- icons.truck %>

@@ -6,6 +6,7 @@
 </div>
 
 <div class="card">
+  <div class="card-header"><strong><%= usuarios.length %></strong>&nbsp;usuario<%= usuarios.length === 1 ? '' : 's' %></div>
   <% if (!usuarios.length) { %>
     <div class="empty-state">
       <%- icons.users %>

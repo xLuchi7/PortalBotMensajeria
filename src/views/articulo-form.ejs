@@ -1,0 +1,40 @@
+<%- include('partials/header') %>
+
+<div class="breadcrumb">
+  <a href="/clientes/<%= clienteId %>/articulos"><%- icons.arrowLeft %> Artículos</a>
+</div>
+<div class="topbar"><h1><%= editar ? 'Editar artículo' : 'Nuevo artículo' %></h1></div>
+
+<% if (error) { %>
+  <div class="alert alert-error"><%= error %></div>
+<% } %>
+
+<div class="card form-card">
+  <form method="POST" action="<%= editar ? `/clientes/${clienteId}/articulos/${editar.id}/editar` : `/clientes/${clienteId}/articulos/nuevo` %>">
+    <label>
+      Nombre
+      <input type="text" name="nombre" value="<%= editar ? editar.nombre : '' %>" required>
+    </label>
+    <label>
+      Código <span class="field-hint">(opcional, SKU interno)</span>
+      <input type="text" name="codigo" value="<%= editar && editar.codigo ? editar.codigo : '' %>">
+    </label>
+    <label>
+      Descripción <span class="field-hint">(opcional)</span>
+      <input type="text" name="descripcion" value="<%= editar && editar.descripcion ? editar.descripcion : '' %>">
+    </label>
+    <label>
+      Precio
+      <input type="number" name="precio" step="0.01" min="0" value="<%= editar && editar.precio != null ? editar.precio : '' %>">
+    </label>
+    <% if (!editar) { %>
+      <label>
+        Stock inicial
+        <input type="number" name="cantidadInicial" min="0" value="0">
+      </label>
+    <% } %>
+    <button type="submit" class="btn btn-primary"><%= editar ? 'Guardar cambios' : 'Crear artículo' %></button>
+  </form>
+</div>
+
+<%- include('partials/footer') %>

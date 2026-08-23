@@ -1,0 +1,61 @@
+<%- include('partials/header') %>
+
+<div class="topbar">
+  <h1>Artículos</h1>
+  <a href="/clientes/<%= clienteId %>/articulos/nuevo" class="btn btn-primary"><%- icons.plus %> Nuevo artículo</a>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span><strong><%= total %></strong>&nbsp;artículo<%= total === 1 ? '' : 's' %></span>
+    <span><%= activos %> activos</span>
+  </div>
+  <% if (!rows.length) { %>
+    <div class="empty-state">
+      <%- icons.package %>
+      <p>No hay artículos cargados.</p>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Código</th><th>Nombre</th><th>Precio</th><th class="col-center">Stock</th><th class="col-center">Estado</th><th></th></tr>
+        </thead>
+        <tbody>
+          <% rows.forEach(a => { %>
+            <tr class="<%= !a.activo ? 'row-inactive' : '' %>">
+              <td><%= a.codigo || '-' %></td>
+              <td><%= a.nombre %></td>
+              <td><%= a.precio != null ? '$' + Number(a.precio).toLocaleString('es-AR') : '-' %></td>
+              <td class="col-center">
+                <form method="POST" action="/clientes/<%= clienteId %>/articulos/<%= a.id %>/stock" class="stock-form">
+                  <input type="number" name="cantidad" value="<%= a.stock %>" min="0" class="stock-input">
+                  <button type="submit" class="icon-btn" title="Guardar stock"><%- icons.save %></button>
+                </form>
+              </td>
+              <td class="col-center"><span class="badge <%= a.activo ? 'badge-activo' : 'badge-inactivo' %>"><%= a.activo ? 'Activo' : 'Inactivo' %></span></td>
+              <td>
+                <div class="cell-actions">
+                  <a href="/clientes/<%= clienteId %>/articulos/<%= a.id %>/editar" class="icon-btn" title="Editar"><%- icons.edit %></a>
+                  <% if (a.activo) { %>
+                    <form method="POST" action="/clientes/<%= clienteId %>/articulos/<%= a.id %>/borrar" class="inline"
+                          onsubmit="return confirm('¿Desactivar \'<%= a.nombre %>\'? No aparecerá más para el bot ni en el catálogo, pero se conserva el historial.');">
+                      <button type="submit" class="icon-btn danger" title="Desactivar"><%- icons.trash %></button>
+                    </form>
+                  <% } else { %>
+                    <form method="POST" action="/clientes/<%= clienteId %>/articulos/<%= a.id %>/activar" class="inline">
+                      <button type="submit" class="icon-btn" title="Reactivar"><%- icons.refresh %></button>
+                    </form>
+                  <% } %>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <%- include('partials/pagination') %>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

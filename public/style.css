@@ -330,6 +330,19 @@ tbody tr.row-inactive { opacity: 0.55; }
 
 form.inline { display: inline-flex; margin: 0; }
 
+.stock-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+}
+.stock-input {
+  width: 68px;
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  text-align: center;
+}
+
 /* ── Forms ──────────────────────────────────────────────────────────── */
 
 .form-card { max-width: 460px; padding: 1.75rem; }

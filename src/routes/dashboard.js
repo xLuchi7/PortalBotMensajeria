@@ -4,6 +4,7 @@ const mensajes = require('../services/mensajeService');
 const escalamientos = require('../services/escalamientoService');
 const pedidos = require('../services/pedidoService');
 const clientes = require('../services/clienteService');
+const articulos = require('../services/articuloService');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -96,6 +97,79 @@ router.post('/clientes/:clienteId/activar', requireAdmin, async (req, res, next)
 });
 
 // ── Datos de un Cliente puntual (el propio, o cualquiera si sos admin) ─────
+
+router.get('/clientes/:clienteId/articulos', resolveClienteAccess, async (req, res, next) => {
+  try {
+    const [cliente, resultado] = await Promise.all([
+      clientes.obtenerCliente(req.clienteId),
+      articulos.listarArticulos(req.clienteId, paginaDe(req)),
+    ]);
+    res.render('articulos', { usuario: req.session.usuario, cliente, clienteId: req.clienteId, ...resultado });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/clientes/:clienteId/articulos/nuevo', resolveClienteAccess, (req, res) => {
+  res.render('articulo-form', { usuario: req.session.usuario, clienteId: req.clienteId, editar: null, error: null });
+});
+
+router.post('/clientes/:clienteId/articulos/nuevo', resolveClienteAccess, async (req, res, next) => {
+  try {
+    const { codigo, nombre, descripcion, precio, cantidadInicial } = req.body;
+    await articulos.crearArticulo(req.clienteId, { codigo, nombre, descripcion, precio, cantidadInicial });
+    res.redirect(`/clientes/${req.clienteId}/articulos`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/clientes/:clienteId/articulos/:id/editar', resolveClienteAccess, async (req, res, next) => {
+  try {
+    const editar = await articulos.obtenerArticulo(req.params.id, req.clienteId);
+    if (!editar) return res.status(404).send('Artículo no encontrado.');
+    res.render('articulo-form', { usuario: req.session.usuario, clienteId: req.clienteId, editar, error: null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/clientes/:clienteId/articulos/:id/editar', resolveClienteAccess, async (req, res, next) => {
+  try {
+    const { codigo, nombre, descripcion, precio } = req.body;
+    await articulos.actualizarArticulo(req.params.id, req.clienteId, { codigo, nombre, descripcion, precio });
+    res.redirect(`/clientes/${req.clienteId}/articulos`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/clientes/:clienteId/articulos/:id/stock', resolveClienteAccess, async (req, res, next) => {
+  try {
+    await articulos.actualizarStock(req.params.id, req.clienteId, req.body.cantidad);
+    res.redirect(`/clientes/${req.clienteId}/articulos`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/clientes/:clienteId/articulos/:id/borrar', resolveClienteAccess, async (req, res, next) => {
+  try {
+    await articulos.desactivarArticulo(req.params.id, req.clienteId);
+    res.redirect(`/clientes/${req.clienteId}/articulos`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/clientes/:clienteId/articulos/:id/activar', resolveClienteAccess, async (req, res, next) => {
+  try {
+    await articulos.activarArticulo(req.params.id, req.clienteId);
+    res.redirect(`/clientes/${req.clienteId}/articulos`);
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get('/clientes/:clienteId/mensajes', resolveClienteAccess, async (req, res, next) => {
   try {

@@ -32,21 +32,7 @@
         </tbody>
       </table>
     </div>
-    <% if (totalPages > 1) { %>
-      <div class="pagination">
-        <% if (page > 1) { %>
-          <a href="?page=<%= page - 1 %>" class="btn btn-outline">&larr; Anterior</a>
-        <% } else { %>
-          <span class="btn btn-outline disabled">&larr; Anterior</span>
-        <% } %>
-        <span class="pagination-info">Página <%= page %> de <%= totalPages %></span>
-        <% if (page < totalPages) { %>
-          <a href="?page=<%= page + 1 %>" class="btn btn-outline">Siguiente &rarr;</a>
-        <% } else { %>
-          <span class="btn btn-outline disabled">Siguiente &rarr;</span>
-        <% } %>
-      </div>
-    <% } %>
+    <%- include('partials/pagination') %>
   <% } %>
 </div>
 

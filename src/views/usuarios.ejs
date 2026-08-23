@@ -6,8 +6,8 @@
 </div>
 
 <div class="card">
-  <div class="card-header"><span><strong><%= usuarios.length %></strong>&nbsp;usuario<%= usuarios.length === 1 ? '' : 's' %></span></div>
-  <% if (!usuarios.length) { %>
+  <div class="card-header"><span><strong><%= total %></strong>&nbsp;usuario<%= total === 1 ? '' : 's' %></span></div>
+  <% if (!rows.length) { %>
     <div class="empty-state">
       <%- icons.users %>
       <p>No hay usuarios cargados.</p>
@@ -19,7 +19,7 @@
           <tr><th>Email</th><th class="col-center">Rol</th><th>Cliente</th><th class="col-center">Estado</th><th></th></tr>
         </thead>
         <tbody>
-          <% usuarios.forEach(u => { %>
+          <% rows.forEach(u => { %>
             <tr>
               <td><%= u.email %></td>
               <td class="col-center"><span class="badge badge-<%= u.rol %>"><%= u.rol %></span></td>
@@ -39,6 +39,7 @@
         </tbody>
       </table>
     </div>
+    <%- include('partials/pagination') %>
   <% } %>
 </div>
 

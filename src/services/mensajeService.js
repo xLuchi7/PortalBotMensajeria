@@ -1,6 +1,6 @@
 const { getPool, sql } = require('./db');
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 
 async function listarMensajes(clienteId, page = 1) {
   const pool = await getPool();

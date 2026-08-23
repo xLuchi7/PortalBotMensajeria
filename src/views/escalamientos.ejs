@@ -4,10 +4,10 @@
 
 <div class="card">
   <div class="card-header">
-    <span><strong><%= escalamientos.length %></strong>&nbsp;en total</span>
-    <span><%= escalamientos.filter(e => !e.resuelto).length %> pendientes</span>
+    <span><strong><%= total %></strong>&nbsp;en total</span>
+    <span><%= pendientes %> pendientes</span>
   </div>
-  <% if (!escalamientos.length) { %>
+  <% if (!rows.length) { %>
     <div class="empty-state">
       <%- icons.alertTriangle %>
       <p>No hay escalamientos.</p>
@@ -16,23 +16,24 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Fecha</th><th>Usuario</th><th>Motivo</th><th class="col-center">Estado</th><th></th></tr>
+          <tr><th>Fecha</th><th>Usuario</th><th>Motivo</th><th class="col-center">Estado</th></tr>
         </thead>
         <tbody>
-          <% escalamientos.forEach(e => { %>
+          <% rows.forEach(e => { %>
             <tr>
               <td><%= new Date(e.fecha).toLocaleString('es-AR') %></td>
               <td><%= e.userId %></td>
               <td><%= e.motivo %></td>
               <td class="col-center">
-                <span class="badge <%= e.resuelto ? 'badge-resuelto' : 'badge-pendiente' %>">
-                  <%= e.resuelto ? 'Resuelto' : 'Pendiente' %>
-                </span>
-              </td>
-              <td>
-                <% if (!e.resuelto) { %>
-                  <form method="POST" action="/clientes/<%= clienteId %>/escalamientos/<%= e.id %>/resolver" class="inline">
-                    <button type="submit" class="btn btn-outline">Marcar resuelto</button>
+                <% if (e.estado === 'resuelto') { %>
+                  <span class="badge badge-resuelto">Resuelto</span>
+                <% } else { %>
+                  <form method="POST" action="/clientes/<%= clienteId %>/escalamientos/<%= e.id %>/estado" class="inline">
+                    <select name="estado" onchange="this.form.submit()" class="badge-select badge-<%= e.estado %>">
+                      <option value="pendiente" <%= e.estado === 'pendiente' ? 'selected' : '' %>>Pendiente</option>
+                      <option value="en_proceso" <%= e.estado === 'en_proceso' ? 'selected' : '' %>>En proceso</option>
+                      <option value="resuelto">Resuelto</option>
+                    </select>
                   </form>
                 <% } %>
               </td>
@@ -41,6 +42,7 @@
         </tbody>
       </table>
     </div>
+    <%- include('partials/pagination') %>
   <% } %>
 </div>
 

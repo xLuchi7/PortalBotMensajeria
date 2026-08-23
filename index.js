@@ -13,12 +13,14 @@ const dashboardRoutes = require('./src/routes/dashboard');
 const usuariosRoutes = require('./src/routes/usuarios');
 const { getPool } = require('./src/services/db');
 const icons = require('./src/icons');
+const timezones = require('./src/timezones');
 
 const app = express();
 
 app.set('view engine', 'ejs');
 app.set('views', './src/views');
 app.locals.icons = icons;
+app.locals.timezones = timezones;
 
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));

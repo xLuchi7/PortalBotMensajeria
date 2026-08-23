@@ -7,10 +7,10 @@
 
 <div class="card">
   <div class="card-header">
-    <span><strong><%= clientes.length %></strong>&nbsp;cliente<%= clientes.length === 1 ? '' : 's' %></span>
-    <span><%= clientes.filter(c => c.activo).length %> activos</span>
+    <span><strong><%= total %></strong>&nbsp;cliente<%= total === 1 ? '' : 's' %></span>
+    <span><%= activos %> activos</span>
   </div>
-  <% if (!clientes.length) { %>
+  <% if (!rows.length) { %>
     <div class="empty-state">
       <%- icons.briefcase %>
       <p>No hay clientes cargados.</p>
@@ -22,7 +22,7 @@
           <tr><th>Razón social</th><th>CUIT</th><th>Teléfono</th><th>Email</th><th class="col-center">Estado</th><th></th></tr>
         </thead>
         <tbody>
-          <% clientes.forEach(c => { %>
+          <% rows.forEach(c => { %>
             <tr class="<%= !c.activo ? 'row-inactive' : '' %>">
               <td><%= c.razonSocial %></td>
               <td><%= c.cuit %></td>
@@ -52,6 +52,7 @@
         </tbody>
       </table>
     </div>
+    <%- include('partials/pagination') %>
   <% } %>
 </div>
 

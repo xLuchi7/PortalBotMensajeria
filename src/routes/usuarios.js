@@ -8,8 +8,9 @@ router.use(requireAuth, requireAdmin);
 
 router.get('/usuarios', async (req, res, next) => {
   try {
-    const lista = await usuarios.listarUsuarios();
-    res.render('usuarios', { usuario: req.session.usuario, usuarios: lista });
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const resultado = await usuarios.listarUsuarios(page);
+    res.render('usuarios', { usuario: req.session.usuario, ...resultado });
   } catch (err) {
     next(err);
   }

@@ -28,11 +28,11 @@
           <a href="/clientes/<%= clienteId %>/mensajes" class="<%= currentPath.endsWith('/mensajes') ? 'active' : '' %>">
             <%- icons.message %><span class="label">Mensajes</span>
           </a>
-          <a href="/clientes/<%= clienteId %>/escalamientos" class="<%= currentPath.endsWith('/escalamientos') ? 'active' : '' %>">
-            <%- icons.alertTriangle %><span class="label">Escalamientos</span>
-          </a>
           <a href="/clientes/<%= clienteId %>/pedidos" class="<%= currentPath.includes('/pedidos') ? 'active' : '' %>">
             <%- icons.truck %><span class="label">Pedidos</span>
+          </a>
+          <a href="/clientes/<%= clienteId %>/escalamientos" class="<%= currentPath.endsWith('/escalamientos') ? 'active' : '' %>">
+            <%- icons.alertTriangle %><span class="label">Escalamientos</span>
           </a>
         </nav>
       <% } %>
@@ -42,11 +42,11 @@
         <a href="/clientes/<%= usuario.clienteId %>/mensajes" class="<%= currentPath.endsWith('/mensajes') ? 'active' : '' %>">
           <%- icons.message %><span class="label">Mensajes</span>
         </a>
-        <a href="/clientes/<%= usuario.clienteId %>/escalamientos" class="<%= currentPath.endsWith('/escalamientos') ? 'active' : '' %>">
-          <%- icons.alertTriangle %><span class="label">Escalamientos</span>
-        </a>
         <a href="/clientes/<%= usuario.clienteId %>/pedidos" class="<%= currentPath.includes('/pedidos') ? 'active' : '' %>">
           <%- icons.truck %><span class="label">Pedidos</span>
+        </a>
+        <a href="/clientes/<%= usuario.clienteId %>/escalamientos" class="<%= currentPath.endsWith('/escalamientos') ? 'active' : '' %>">
+          <%- icons.alertTriangle %><span class="label">Escalamientos</span>
         </a>
       </nav>
     <% } %>

@@ -29,7 +29,12 @@
     </label>
     <label>
       Zona horaria <span class="field-hint">(para mostrar fechas en el portal)</span>
-      <input type="text" name="zonaHoraria" value="<%= editar ? editar.zonaHoraria : 'Argentina Standard Time' %>">
+      <select name="zonaHoraria">
+        <% const zonaActual = editar ? editar.zonaHoraria : 'Argentina Standard Time'; %>
+        <% timezones.forEach(tz => { %>
+          <option value="<%= tz.id %>" <%= tz.id === zonaActual ? 'selected' : '' %>><%= tz.label %></option>
+        <% }) %>
+      </select>
     </label>
     <button type="submit" class="btn btn-primary"><%= editar ? 'Guardar cambios' : 'Crear cliente' %></button>
   </form>

@@ -1,6 +1,8 @@
 const bcrypt = require('bcryptjs');
 const { getPool, sql } = require('./db');
 
+const PAGE_SIZE = 20;
+
 async function autenticar(email, password) {
   const pool = await getPool();
   const result = await pool
@@ -28,15 +30,34 @@ async function autenticar(email, password) {
   };
 }
 
-async function listarUsuarios() {
+async function listarUsuarios(page = 1) {
   const pool = await getPool();
-  const result = await pool.request().query(`
-    SELECT u.id, u.email, u.rol, u.activo, u.clienteId, c.razonSocial
-    FROM Usuarios u
-    LEFT JOIN Clientes c ON c.id = u.clienteId
-    ORDER BY u.rol, c.razonSocial, u.email
-  `);
-  return result.recordset;
+  const offset = (page - 1) * PAGE_SIZE;
+
+  const [countResult, rowsResult] = await Promise.all([
+    pool.request().query('SELECT COUNT(*) AS total FROM Usuarios'),
+    pool
+      .request()
+      .input('offset', sql.Int, offset)
+      .input('pageSize', sql.Int, PAGE_SIZE)
+      .query(`
+        SELECT u.id, u.email, u.rol, u.activo, u.clienteId, c.razonSocial
+        FROM Usuarios u
+        LEFT JOIN Clientes c ON c.id = u.clienteId
+        ORDER BY u.rol, c.razonSocial, u.email
+        OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
+      `),
+  ]);
+
+  const total = countResult.recordset[0].total;
+
+  return {
+    rows: rowsResult.recordset,
+    total,
+    page,
+    pageSize: PAGE_SIZE,
+    totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
+  };
 }
 
 async function obtenerUsuario(id) {

@@ -8,6 +8,10 @@ const clientes = require('../services/clienteService');
 const router = express.Router();
 router.use(requireAuth);
 
+function paginaDe(req) {
+  return Math.max(1, parseInt(req.query.page, 10) || 1);
+}
+
 router.get('/', (req, res) => {
   if (req.session.usuario.rol === 'admin') return res.redirect('/clientes');
   res.redirect(`/clientes/${req.session.usuario.clienteId}/mensajes`);
@@ -17,8 +21,8 @@ router.get('/', (req, res) => {
 
 router.get('/clientes', requireAdmin, async (req, res, next) => {
   try {
-    const lista = await clientes.listarClientes();
-    res.render('clientes', { usuario: req.session.usuario, clientes: lista });
+    const resultado = await clientes.listarClientes(paginaDe(req));
+    res.render('clientes', { usuario: req.session.usuario, ...resultado });
   } catch (err) {
     next(err);
   }
@@ -95,10 +99,9 @@ router.post('/clientes/:clienteId/activar', requireAdmin, async (req, res, next)
 
 router.get('/clientes/:clienteId/mensajes', resolveClienteAccess, async (req, res, next) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const [cliente, resultado] = await Promise.all([
       clientes.obtenerCliente(req.clienteId),
-      mensajes.listarMensajes(req.clienteId, page),
+      mensajes.listarMensajes(req.clienteId, paginaDe(req)),
     ]);
     res.render('mensajes', { usuario: req.session.usuario, cliente, clienteId: req.clienteId, ...resultado });
   } catch (err) {
@@ -108,32 +111,36 @@ router.get('/clientes/:clienteId/mensajes', resolveClienteAccess, async (req, re
 
 router.get('/clientes/:clienteId/escalamientos', resolveClienteAccess, async (req, res, next) => {
   try {
-    const [cliente, lista] = await Promise.all([
+    const [cliente, resultado] = await Promise.all([
       clientes.obtenerCliente(req.clienteId),
-      escalamientos.listarEscalamientos(req.clienteId),
+      escalamientos.listarEscalamientos(req.clienteId, paginaDe(req)),
     ]);
-    res.render('escalamientos', { usuario: req.session.usuario, cliente, clienteId: req.clienteId, escalamientos: lista });
+    res.render('escalamientos', { usuario: req.session.usuario, cliente, clienteId: req.clienteId, ...resultado });
   } catch (err) {
     next(err);
   }
 });
 
-router.post('/clientes/:clienteId/escalamientos/:id/resolver', resolveClienteAccess, async (req, res, next) => {
+router.post('/clientes/:clienteId/escalamientos/:id/estado', resolveClienteAccess, async (req, res, next) => {
   try {
-    await escalamientos.marcarResuelto(req.params.id, req.clienteId);
+    await escalamientos.actualizarEstado(req.params.id, req.clienteId, req.body.estado);
     res.redirect(`/clientes/${req.clienteId}/escalamientos`);
   } catch (err) {
+    if (err instanceof escalamientos.EstadoFinalError) {
+      console.warn(`[escalamientos] Intento de modificar un escalamiento ya resuelto (id=${req.params.id})`);
+      return res.redirect(`/clientes/${req.clienteId}/escalamientos`);
+    }
     next(err);
   }
 });
 
 router.get('/clientes/:clienteId/pedidos', resolveClienteAccess, async (req, res, next) => {
   try {
-    const [cliente, lista] = await Promise.all([
+    const [cliente, resultado] = await Promise.all([
       clientes.obtenerCliente(req.clienteId),
-      pedidos.listarPedidos(req.clienteId),
+      pedidos.listarPedidos(req.clienteId, paginaDe(req)),
     ]);
-    res.render('pedidos', { usuario: req.session.usuario, cliente, clienteId: req.clienteId, pedidos: lista });
+    res.render('pedidos', { usuario: req.session.usuario, cliente, clienteId: req.clienteId, ...resultado });
   } catch (err) {
     next(err);
   }
@@ -162,6 +169,10 @@ router.post('/clientes/:clienteId/pedidos/:id/estado', resolveClienteAccess, asy
     await pedidos.actualizarEstado(req.params.id, req.clienteId, req.body.estado);
     res.redirect(`/clientes/${req.clienteId}/pedidos`);
   } catch (err) {
+    if (err instanceof pedidos.EstadoFinalError) {
+      console.warn(`[pedidos] Intento de modificar un pedido ya finalizado (id=${req.params.id})`);
+      return res.redirect(`/clientes/${req.clienteId}/pedidos`);
+    }
     next(err);
   }
 });

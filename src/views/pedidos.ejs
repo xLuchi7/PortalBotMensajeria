@@ -1,13 +1,14 @@
 <%- include('partials/header') %>
 
 <div class="topbar"><h1>Pedidos</h1></div>
+<p class="page-hint">Al marcar un pedido como <strong>Entregado</strong> se descuenta el Stock de cada artículo. "Entregado" y "Cancelado" son estados finales: una vez ahí no se pueden volver a cambiar.</p>
 
 <div class="card">
   <div class="card-header">
-    <span><strong><%= pedidos.length %></strong>&nbsp;pedido<%= pedidos.length === 1 ? '' : 's' %></span>
-    <span>Total: <strong>$<%= pedidos.reduce((acc, p) => acc + Number(p.total), 0).toLocaleString('es-AR') %></strong></span>
+    <span><strong><%= total %></strong>&nbsp;pedido<%= total === 1 ? '' : 's' %></span>
+    <span>Total: <strong>$<%= Number(totalMonto).toLocaleString('es-AR') %></strong></span>
   </div>
-  <% if (!pedidos.length) { %>
+  <% if (!rows.length) { %>
     <div class="empty-state">
       <%- icons.truck %>
       <p>No hay pedidos.</p>
@@ -19,20 +20,25 @@
           <tr><th>Fecha</th><th>Usuario</th><th>Total</th><th class="col-center">Estado</th><th>Notas</th><th></th></tr>
         </thead>
         <tbody>
-          <% pedidos.forEach(p => { %>
+          <% const ESTADOS_FINALES = ['entregado', 'cancelado']; %>
+          <% rows.forEach(p => { %>
             <tr>
               <td><%= new Date(p.fecha).toLocaleString('es-AR') %></td>
               <td><%= p.userId %></td>
               <td>$<%= Number(p.total).toLocaleString('es-AR') %></td>
               <td class="col-center">
-                <form method="POST" action="/clientes/<%= clienteId %>/pedidos/<%= p.id %>/estado" class="inline">
-                  <select name="estado" onchange="this.form.submit()" class="badge-select badge-<%= p.estado %>">
-                    <option value="pendiente" <%= p.estado === 'pendiente' ? 'selected' : '' %>>Pendiente</option>
-                    <option value="confirmado" <%= p.estado === 'confirmado' ? 'selected' : '' %>>Confirmado</option>
-                    <option value="entregado" <%= p.estado === 'entregado' ? 'selected' : '' %>>Entregado</option>
-                    <option value="cancelado" <%= p.estado === 'cancelado' ? 'selected' : '' %>>Cancelado</option>
-                  </select>
-                </form>
+                <% if (ESTADOS_FINALES.includes(p.estado)) { %>
+                  <span class="badge badge-<%= p.estado %>"><%= p.estado === 'entregado' ? 'Entregado' : 'Cancelado' %></span>
+                <% } else { %>
+                  <form method="POST" action="/clientes/<%= clienteId %>/pedidos/<%= p.id %>/estado" class="inline">
+                    <select name="estado" onchange="this.form.submit()" class="badge-select badge-<%= p.estado %>">
+                      <option value="pendiente" <%= p.estado === 'pendiente' ? 'selected' : '' %>>Pendiente</option>
+                      <option value="confirmado" <%= p.estado === 'confirmado' ? 'selected' : '' %>>Confirmado</option>
+                      <option value="entregado">Entregado</option>
+                      <option value="cancelado">Cancelado</option>
+                    </select>
+                  </form>
+                <% } %>
               </td>
               <td><%= p.notas || '-' %></td>
               <td>
@@ -43,6 +49,7 @@
         </tbody>
       </table>
     </div>
+    <%- include('partials/pagination') %>
   <% } %>
 </div>
 

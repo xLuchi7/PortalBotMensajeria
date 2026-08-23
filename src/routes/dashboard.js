@@ -1,63 +1,103 @@
 const express = require('express');
-const { requireAuth } = require('../middleware/requireAuth');
+const { requireAuth, requireAdmin, resolveClienteAccess } = require('../middleware/requireAuth');
 const mensajes = require('../services/mensajeService');
 const escalamientos = require('../services/escalamientoService');
 const pedidos = require('../services/pedidoService');
+const clientes = require('../services/clienteService');
 
 const router = express.Router();
 router.use(requireAuth);
 
-router.get('/', (req, res) => res.redirect('/mensajes'));
+router.get('/', (req, res) => {
+  if (req.session.usuario.rol === 'admin') return res.redirect('/clientes');
+  res.redirect(`/clientes/${req.session.usuario.clienteId}/mensajes`);
+});
 
-router.get('/mensajes', async (req, res, next) => {
+// ── Admin: listado de Clientes ─────────────────────────────────────────────
+
+router.get('/clientes', requireAdmin, async (req, res, next) => {
   try {
-    const lista = await mensajes.listarMensajes(req.session.usuario.clienteId);
-    res.render('mensajes', { usuario: req.session.usuario, mensajes: lista });
+    const lista = await clientes.listarClientes();
+    res.render('clientes', { usuario: req.session.usuario, clientes: lista });
   } catch (err) {
     next(err);
   }
 });
 
-router.get('/escalamientos', async (req, res, next) => {
+router.post('/clientes/:clienteId/borrar', requireAdmin, async (req, res, next) => {
   try {
-    const lista = await escalamientos.listarEscalamientos(req.session.usuario.clienteId);
-    res.render('escalamientos', { usuario: req.session.usuario, escalamientos: lista });
+    await clientes.desactivarCliente(req.params.clienteId);
+    res.redirect('/clientes');
   } catch (err) {
     next(err);
   }
 });
 
-router.post('/escalamientos/:id/resolver', async (req, res, next) => {
+// ── Datos de un Cliente puntual (el propio, o cualquiera si sos admin) ─────
+
+router.get('/clientes/:clienteId/mensajes', resolveClienteAccess, async (req, res, next) => {
   try {
-    await escalamientos.marcarResuelto(req.params.id, req.session.usuario.clienteId);
-    res.redirect('/escalamientos');
+    const [cliente, lista] = await Promise.all([
+      clientes.obtenerCliente(req.clienteId),
+      mensajes.listarMensajes(req.clienteId),
+    ]);
+    res.render('mensajes', { usuario: req.session.usuario, cliente, clienteId: req.clienteId, mensajes: lista });
   } catch (err) {
     next(err);
   }
 });
 
-router.get('/pedidos', async (req, res, next) => {
+router.get('/clientes/:clienteId/escalamientos', resolveClienteAccess, async (req, res, next) => {
   try {
-    const lista = await pedidos.listarPedidos(req.session.usuario.clienteId);
-    res.render('pedidos', { usuario: req.session.usuario, pedidos: lista });
+    const [cliente, lista] = await Promise.all([
+      clientes.obtenerCliente(req.clienteId),
+      escalamientos.listarEscalamientos(req.clienteId),
+    ]);
+    res.render('escalamientos', { usuario: req.session.usuario, cliente, clienteId: req.clienteId, escalamientos: lista });
   } catch (err) {
     next(err);
   }
 });
 
-router.get('/pedidos/:id', async (req, res, next) => {
+router.post('/clientes/:clienteId/escalamientos/:id/resolver', resolveClienteAccess, async (req, res, next) => {
   try {
-    const detalle = await pedidos.obtenerDetalle(req.params.id, req.session.usuario.clienteId);
-    res.render('pedido-detalle', { usuario: req.session.usuario, pedidoId: req.params.id, items: detalle });
+    await escalamientos.marcarResuelto(req.params.id, req.clienteId);
+    res.redirect(`/clientes/${req.clienteId}/escalamientos`);
   } catch (err) {
     next(err);
   }
 });
 
-router.post('/pedidos/:id/estado', async (req, res, next) => {
+router.get('/clientes/:clienteId/pedidos', resolveClienteAccess, async (req, res, next) => {
   try {
-    await pedidos.actualizarEstado(req.params.id, req.session.usuario.clienteId, req.body.estado);
-    res.redirect('/pedidos');
+    const [cliente, lista] = await Promise.all([
+      clientes.obtenerCliente(req.clienteId),
+      pedidos.listarPedidos(req.clienteId),
+    ]);
+    res.render('pedidos', { usuario: req.session.usuario, cliente, clienteId: req.clienteId, pedidos: lista });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/clientes/:clienteId/pedidos/:id', resolveClienteAccess, async (req, res, next) => {
+  try {
+    const detalle = await pedidos.obtenerDetalle(req.params.id, req.clienteId);
+    res.render('pedido-detalle', {
+      usuario: req.session.usuario,
+      clienteId: req.clienteId,
+      pedidoId: req.params.id,
+      items: detalle,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/clientes/:clienteId/pedidos/:id/estado', resolveClienteAccess, async (req, res, next) => {
+  try {
+    await pedidos.actualizarEstado(req.params.id, req.clienteId, req.body.estado);
+    res.redirect(`/clientes/${req.clienteId}/pedidos`);
   } catch (err) {
     next(err);
   }

@@ -10,6 +10,7 @@ const session = require('express-session');
 const config = require('./src/config');
 const authRoutes = require('./src/routes/auth');
 const dashboardRoutes = require('./src/routes/dashboard');
+const usuariosRoutes = require('./src/routes/usuarios');
 const { getPool } = require('./src/services/db');
 
 const app = express();
@@ -27,6 +28,7 @@ app.use(session({
 
 app.use('/', authRoutes);
 app.use('/', dashboardRoutes);
+app.use('/', usuariosRoutes);
 
 app.listen(config.port, () => {
   console.log(`Portal Mensajeria running on port ${config.port}`);

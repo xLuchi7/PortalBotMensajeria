@@ -1,0 +1,35 @@
+<%- include('partials/header') %>
+
+<h2>Clientes</h2>
+<table>
+  <thead>
+    <tr><th>Razón social</th><th>CUIT</th><th>Teléfono</th><th>Email</th><th>Estado</th><th colspan="4"></th></tr>
+  </thead>
+  <tbody>
+    <% clientes.forEach(c => { %>
+      <tr<%= !c.activo ? ' style="opacity: 0.5;"' : '' %>>
+        <td><%= c.razonSocial %></td>
+        <td><%= c.cuit %></td>
+        <td><%= c.telefono %></td>
+        <td><%= c.email || '-' %></td>
+        <td><%= c.activo ? 'Activo' : 'Inactivo' %></td>
+        <td><a href="/clientes/<%= c.id %>/mensajes">Mensajes</a></td>
+        <td><a href="/clientes/<%= c.id %>/pedidos">Pedidos</a></td>
+        <td><a href="/clientes/<%= c.id %>/escalamientos">Escalamientos</a></td>
+        <td>
+          <% if (c.activo) { %>
+            <form method="POST" action="/clientes/<%= c.id %>/borrar" style="margin: 0;"
+                  onsubmit="return confirm('¿Desactivar a <%= c.razonSocial %>? Deja de poder usar el bot y el portal, pero no se borra su historial.');">
+              <button type="submit" class="outline contrast">Borrar</button>
+            </form>
+          <% } %>
+        </td>
+      </tr>
+    <% }) %>
+    <% if (!clientes.length) { %>
+      <tr><td colspan="9">No hay clientes cargados.</td></tr>
+    <% } %>
+  </tbody>
+</table>
+
+<%- include('partials/footer') %>

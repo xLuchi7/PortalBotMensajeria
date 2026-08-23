@@ -1,0 +1,40 @@
+<%- include('partials/header') %>
+
+<h2><%= editar ? 'Editar usuario' : 'Nuevo usuario' %></h2>
+<p><a href="/usuarios">&larr; Volver a Usuarios</a></p>
+
+<% if (error) { %>
+  <p style="color: #c0392b;"><%= error %></p>
+<% } %>
+
+<form method="POST" action="<%= editar ? `/usuarios/${editar.id}/editar` : '/usuarios/nuevo' %>" style="max-width: 480px;">
+  <label>
+    Email
+    <input type="email" name="email" value="<%= editar ? editar.email : '' %>" required>
+  </label>
+  <label>
+    Contraseña <%= editar ? '(dejar en blanco para no cambiarla)' : '' %>
+    <input type="password" name="password" <%= editar ? '' : 'required' %>>
+  </label>
+  <label>
+    Rol
+    <select name="rol" id="rol" onchange="document.getElementById('clienteField').style.display = this.value === 'admin' ? 'none' : 'block';">
+      <option value="cliente" <%= (!editar || editar.rol === 'cliente') ? 'selected' : '' %>>Cliente</option>
+      <option value="admin" <%= (editar && editar.rol === 'admin') ? 'selected' : '' %>>Admin</option>
+    </select>
+  </label>
+  <div id="clienteField" style="display: <%= (editar && editar.rol === 'admin') ? 'none' : 'block' %>;">
+    <label>
+      Cliente
+      <select name="clienteId">
+        <option value="">-- Seleccionar --</option>
+        <% clientesActivos.forEach(c => { %>
+          <option value="<%= c.id %>" <%= (editar && editar.clienteId === c.id) ? 'selected' : '' %>><%= c.razonSocial %></option>
+        <% }) %>
+      </select>
+    </label>
+  </div>
+  <button type="submit"><%= editar ? 'Guardar cambios' : 'Crear usuario' %></button>
+</form>
+
+<%- include('partials/footer') %>

@@ -9,11 +9,16 @@
 <body>
 <header class="container">
   <nav>
-    <ul><li><strong><%= usuario.razonSocial %></strong></li></ul>
+    <ul><li><strong><%= usuario.rol === 'admin' ? 'Panel Admin' : usuario.razonSocial %></strong></li></ul>
     <ul>
-      <li><a href="/mensajes">Mensajes</a></li>
-      <li><a href="/escalamientos">Escalamientos</a></li>
-      <li><a href="/pedidos">Pedidos</a></li>
+      <% if (usuario.rol === 'admin') { %>
+        <li><a href="/clientes">Clientes</a></li>
+        <li><a href="/usuarios">Usuarios</a></li>
+      <% } else { %>
+        <li><a href="/clientes/<%= usuario.clienteId %>/mensajes">Mensajes</a></li>
+        <li><a href="/clientes/<%= usuario.clienteId %>/escalamientos">Escalamientos</a></li>
+        <li><a href="/clientes/<%= usuario.clienteId %>/pedidos">Pedidos</a></li>
+      <% } %>
     </ul>
     <ul>
       <li>
@@ -23,5 +28,8 @@
       </li>
     </ul>
   </nav>
+  <% if (usuario.rol === 'admin' && typeof cliente !== 'undefined' && cliente) { %>
+    <p><a href="/clientes">&larr; Volver a Clientes</a> — viendo: <strong><%= cliente.razonSocial %></strong></p>
+  <% } %>
 </header>
 <main class="container">

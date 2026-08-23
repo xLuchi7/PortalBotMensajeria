@@ -12,7 +12,7 @@
         <td><%= p.userId %></td>
         <td>$<%= Number(p.total).toLocaleString('es-AR') %></td>
         <td>
-          <form method="POST" action="/pedidos/<%= p.id %>/estado" style="margin: 0; display: flex; gap: 0.5rem;">
+          <form method="POST" action="/clientes/<%= clienteId %>/pedidos/<%= p.id %>/estado" style="margin: 0; display: flex; gap: 0.5rem;">
             <select name="estado" onchange="this.form.submit()">
               <option value="pendiente" <%= p.estado === 'pendiente' ? 'selected' : '' %>>Pendiente</option>
               <option value="confirmado" <%= p.estado === 'confirmado' ? 'selected' : '' %>>Confirmado</option>
@@ -22,7 +22,7 @@
           </form>
         </td>
         <td><%= p.notas || '-' %></td>
-        <td><a href="/pedidos/<%= p.id %>">Ver detalle</a></td>
+        <td><a href="/clientes/<%= clienteId %>/pedidos/<%= p.id %>">Ver detalle</a></td>
       </tr>
     <% }) %>
     <% if (!pedidos.length) { %>

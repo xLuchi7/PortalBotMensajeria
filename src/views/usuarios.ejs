@@ -1,0 +1,31 @@
+<%- include('partials/header') %>
+
+<h2>Usuarios</h2>
+<p><a href="/usuarios/nuevo" role="button">+ Nuevo usuario</a></p>
+<table>
+  <thead>
+    <tr><th>Email</th><th>Rol</th><th>Cliente</th><th>Estado</th><th colspan="2"></th></tr>
+  </thead>
+  <tbody>
+    <% usuarios.forEach(u => { %>
+      <tr>
+        <td><%= u.email %></td>
+        <td><%= u.rol %></td>
+        <td><%= u.razonSocial || '-' %></td>
+        <td><%= u.activo ? 'Activo' : 'Inactivo' %></td>
+        <td><a href="/usuarios/<%= u.id %>/editar">Editar</a></td>
+        <td>
+          <form method="POST" action="/usuarios/<%= u.id %>/borrar" style="margin: 0;"
+                onsubmit="return confirm('¿Borrar el usuario <%= u.email %>? No se puede deshacer.');">
+            <button type="submit" class="outline contrast">Borrar</button>
+          </form>
+        </td>
+      </tr>
+    <% }) %>
+    <% if (!usuarios.length) { %>
+      <tr><td colspan="6">No hay usuarios cargados.</td></tr>
+    <% } %>
+  </tbody>
+</table>
+
+<%- include('partials/footer') %>

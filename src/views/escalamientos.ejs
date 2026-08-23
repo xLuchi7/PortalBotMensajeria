@@ -14,7 +14,7 @@
         <td><%= e.resuelto ? 'Resuelto' : 'Pendiente' %></td>
         <td>
           <% if (!e.resuelto) { %>
-            <form method="POST" action="/escalamientos/<%= e.id %>/resolver" style="margin: 0;">
+            <form method="POST" action="/clientes/<%= clienteId %>/escalamientos/<%= e.id %>/resolver" style="margin: 0;">
               <button type="submit" class="outline">Marcar resuelto</button>
             </form>
           <% } %>

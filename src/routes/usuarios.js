@@ -1,0 +1,83 @@
+const express = require('express');
+const { requireAuth, requireAdmin } = require('../middleware/requireAuth');
+const usuarios = require('../services/usuarioService');
+const clientes = require('../services/clienteService');
+
+const router = express.Router();
+router.use(requireAuth, requireAdmin);
+
+router.get('/usuarios', async (req, res, next) => {
+  try {
+    const lista = await usuarios.listarUsuarios();
+    res.render('usuarios', { usuario: req.session.usuario, usuarios: lista });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/usuarios/nuevo', async (req, res, next) => {
+  try {
+    const clientesActivos = await clientes.listarClientesActivos();
+    res.render('usuario-form', {
+      usuario: req.session.usuario,
+      clientesActivos,
+      editar: null,
+      error: null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/usuarios/nuevo', async (req, res, next) => {
+  try {
+    const { email, password, rol, clienteId } = req.body;
+    await usuarios.crearUsuario({ email, password, rol, clienteId: clienteId || null });
+    res.redirect('/usuarios');
+  } catch (err) {
+    if (err.number === 2627 || err.number === 2601) {
+      const clientesActivos = await clientes.listarClientesActivos();
+      return res.render('usuario-form', {
+        usuario: req.session.usuario,
+        clientesActivos,
+        editar: null,
+        error: 'Ya existe un usuario con ese email.',
+      });
+    }
+    next(err);
+  }
+});
+
+router.get('/usuarios/:id/editar', async (req, res, next) => {
+  try {
+    const [editar, clientesActivos] = await Promise.all([
+      usuarios.obtenerUsuario(req.params.id),
+      clientes.listarClientesActivos(),
+    ]);
+    if (!editar) return res.status(404).send('Usuario no encontrado.');
+    res.render('usuario-form', { usuario: req.session.usuario, clientesActivos, editar, error: null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/usuarios/:id/editar', async (req, res, next) => {
+  try {
+    const { email, password, rol, clienteId } = req.body;
+    await usuarios.actualizarUsuario(req.params.id, { email, rol, clienteId: clienteId || null, password });
+    res.redirect('/usuarios');
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/usuarios/:id/borrar', async (req, res, next) => {
+  try {
+    await usuarios.borrarUsuario(req.params.id);
+    res.redirect('/usuarios');
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;

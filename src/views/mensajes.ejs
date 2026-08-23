@@ -3,8 +3,8 @@
 <div class="topbar"><h1>Mensajes</h1></div>
 
 <div class="card">
-  <div class="card-header"><strong><%= mensajes.length %></strong>&nbsp;mensaje<%= mensajes.length === 1 ? '' : 's' %></div>
-  <% if (!mensajes.length) { %>
+  <div class="card-header"><strong><%= total %></strong>&nbsp;mensaje<%= total === 1 ? '' : 's' %></div>
+  <% if (!rows.length) { %>
     <div class="empty-state">
       <%- icons.inbox %>
       <p>Todavía no hay mensajes.</p>
@@ -16,7 +16,7 @@
           <tr><th>Fecha</th><th>Usuario</th><th>Plataforma</th><th>Quién</th><th>Mensaje</th></tr>
         </thead>
         <tbody>
-          <% mensajes.forEach(m => { %>
+          <% rows.forEach(m => { %>
             <tr class="<%= m.esError ? 'row-error' : '' %>">
               <td><%= new Date(m.fecha).toLocaleString('es-AR') %></td>
               <td><%= m.userId %></td>
@@ -32,6 +32,21 @@
         </tbody>
       </table>
     </div>
+    <% if (totalPages > 1) { %>
+      <div class="pagination">
+        <% if (page > 1) { %>
+          <a href="?page=<%= page - 1 %>" class="btn btn-outline">&larr; Anterior</a>
+        <% } else { %>
+          <span class="btn btn-outline disabled">&larr; Anterior</span>
+        <% } %>
+        <span class="pagination-info">Página <%= page %> de <%= totalPages %></span>
+        <% if (page < totalPages) { %>
+          <a href="?page=<%= page + 1 %>" class="btn btn-outline">Siguiente &rarr;</a>
+        <% } else { %>
+          <span class="btn btn-outline disabled">Siguiente &rarr;</span>
+        <% } %>
+      </div>
+    <% } %>
   <% } %>
 </div>
 

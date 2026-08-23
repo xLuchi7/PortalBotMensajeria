@@ -37,11 +37,12 @@ router.post('/clientes/:clienteId/borrar', requireAdmin, async (req, res, next) 
 
 router.get('/clientes/:clienteId/mensajes', resolveClienteAccess, async (req, res, next) => {
   try {
-    const [cliente, lista] = await Promise.all([
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const [cliente, resultado] = await Promise.all([
       clientes.obtenerCliente(req.clienteId),
-      mensajes.listarMensajes(req.clienteId),
+      mensajes.listarMensajes(req.clienteId, page),
     ]);
-    res.render('mensajes', { usuario: req.session.usuario, cliente, clienteId: req.clienteId, mensajes: lista });
+    res.render('mensajes', { usuario: req.session.usuario, cliente, clienteId: req.clienteId, ...resultado });
   } catch (err) {
     next(err);
   }

@@ -1,34 +1,45 @@
 <%- include('partials/header') %>
 
-<h2>Pedidos</h2>
-<table>
-  <thead>
-    <tr><th>Fecha</th><th>Usuario</th><th>Total</th><th>Estado</th><th>Notas</th><th></th></tr>
-  </thead>
-  <tbody>
-    <% pedidos.forEach(p => { %>
-      <tr>
-        <td><%= new Date(p.fecha).toLocaleString('es-AR') %></td>
-        <td><%= p.userId %></td>
-        <td>$<%= Number(p.total).toLocaleString('es-AR') %></td>
-        <td>
-          <form method="POST" action="/clientes/<%= clienteId %>/pedidos/<%= p.id %>/estado" style="margin: 0; display: flex; gap: 0.5rem;">
-            <select name="estado" onchange="this.form.submit()">
-              <option value="pendiente" <%= p.estado === 'pendiente' ? 'selected' : '' %>>Pendiente</option>
-              <option value="confirmado" <%= p.estado === 'confirmado' ? 'selected' : '' %>>Confirmado</option>
-              <option value="entregado" <%= p.estado === 'entregado' ? 'selected' : '' %>>Entregado</option>
-              <option value="cancelado" <%= p.estado === 'cancelado' ? 'selected' : '' %>>Cancelado</option>
-            </select>
-          </form>
-        </td>
-        <td><%= p.notas || '-' %></td>
-        <td><a href="/clientes/<%= clienteId %>/pedidos/<%= p.id %>">Ver detalle</a></td>
-      </tr>
-    <% }) %>
-    <% if (!pedidos.length) { %>
-      <tr><td colspan="6">No hay pedidos.</td></tr>
-    <% } %>
-  </tbody>
-</table>
+<div class="topbar"><h1>Pedidos</h1></div>
+
+<div class="card">
+  <% if (!pedidos.length) { %>
+    <div class="empty-state">
+      <%- icons.truck %>
+      <p>No hay pedidos.</p>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Fecha</th><th>Usuario</th><th>Total</th><th>Estado</th><th>Notas</th><th></th></tr>
+        </thead>
+        <tbody>
+          <% pedidos.forEach(p => { %>
+            <tr>
+              <td><%= new Date(p.fecha).toLocaleString('es-AR') %></td>
+              <td><%= p.userId %></td>
+              <td>$<%= Number(p.total).toLocaleString('es-AR') %></td>
+              <td>
+                <form method="POST" action="/clientes/<%= clienteId %>/pedidos/<%= p.id %>/estado" class="inline">
+                  <select name="estado" onchange="this.form.submit()" class="badge-select badge-<%= p.estado %>">
+                    <option value="pendiente" <%= p.estado === 'pendiente' ? 'selected' : '' %>>Pendiente</option>
+                    <option value="confirmado" <%= p.estado === 'confirmado' ? 'selected' : '' %>>Confirmado</option>
+                    <option value="entregado" <%= p.estado === 'entregado' ? 'selected' : '' %>>Entregado</option>
+                    <option value="cancelado" <%= p.estado === 'cancelado' ? 'selected' : '' %>>Cancelado</option>
+                  </select>
+                </form>
+              </td>
+              <td><%= p.notas || '-' %></td>
+              <td>
+                <a href="/clientes/<%= clienteId %>/pedidos/<%= p.id %>" class="icon-btn" title="Ver detalle"><%- icons.eye %></a>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
 
 <%- include('partials/footer') %>

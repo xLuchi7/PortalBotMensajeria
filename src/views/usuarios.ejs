@@ -1,31 +1,44 @@
 <%- include('partials/header') %>
 
-<h2>Usuarios</h2>
-<p><a href="/usuarios/nuevo" role="button">+ Nuevo usuario</a></p>
-<table>
-  <thead>
-    <tr><th>Email</th><th>Rol</th><th>Cliente</th><th>Estado</th><th colspan="2"></th></tr>
-  </thead>
-  <tbody>
-    <% usuarios.forEach(u => { %>
-      <tr>
-        <td><%= u.email %></td>
-        <td><%= u.rol %></td>
-        <td><%= u.razonSocial || '-' %></td>
-        <td><%= u.activo ? 'Activo' : 'Inactivo' %></td>
-        <td><a href="/usuarios/<%= u.id %>/editar">Editar</a></td>
-        <td>
-          <form method="POST" action="/usuarios/<%= u.id %>/borrar" style="margin: 0;"
-                onsubmit="return confirm('¿Borrar el usuario <%= u.email %>? No se puede deshacer.');">
-            <button type="submit" class="outline contrast">Borrar</button>
-          </form>
-        </td>
-      </tr>
-    <% }) %>
-    <% if (!usuarios.length) { %>
-      <tr><td colspan="6">No hay usuarios cargados.</td></tr>
-    <% } %>
-  </tbody>
-</table>
+<div class="topbar">
+  <h1>Usuarios</h1>
+  <a href="/usuarios/nuevo" class="btn btn-primary"><%- icons.plus %> Nuevo usuario</a>
+</div>
+
+<div class="card">
+  <% if (!usuarios.length) { %>
+    <div class="empty-state">
+      <%- icons.users %>
+      <p>No hay usuarios cargados.</p>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Email</th><th>Rol</th><th>Cliente</th><th>Estado</th><th></th></tr>
+        </thead>
+        <tbody>
+          <% usuarios.forEach(u => { %>
+            <tr>
+              <td><%= u.email %></td>
+              <td><span class="badge badge-<%= u.rol %>"><%= u.rol %></span></td>
+              <td><%= u.razonSocial || '-' %></td>
+              <td><span class="badge <%= u.activo ? 'badge-activo' : 'badge-inactivo' %>"><%= u.activo ? 'Activo' : 'Inactivo' %></span></td>
+              <td>
+                <div class="cell-actions">
+                  <a href="/usuarios/<%= u.id %>/editar" class="icon-btn" title="Editar"><%- icons.edit %></a>
+                  <form method="POST" action="/usuarios/<%= u.id %>/borrar" class="inline"
+                        onsubmit="return confirm('¿Borrar el usuario <%= u.email %>? No se puede deshacer.');">
+                    <button type="submit" class="icon-btn danger" title="Borrar"><%- icons.trash %></button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
 
 <%- include('partials/footer') %>

@@ -7,7 +7,7 @@ function requireAuth(req, res, next) {
 
 function requireAdmin(req, res, next) {
   if (req.session.usuario.rol !== 'admin') {
-    return res.status(403).send('No tenés acceso a esta sección.');
+    return res.redirect('/');
   }
   next();
 }
@@ -19,7 +19,7 @@ function resolveClienteAccess(req, res, next) {
   const { usuario } = req.session;
 
   if (usuario.rol !== 'admin' && usuario.clienteId !== clienteId) {
-    return res.status(403).send('No tenés acceso a este Cliente.');
+    return res.redirect('/');
   }
 
   req.clienteId = clienteId;

@@ -4,32 +4,61 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Portal de Clientes</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<header class="container">
-  <nav>
-    <ul><li><strong><%= usuario.rol === 'admin' ? 'Panel Admin' : usuario.razonSocial %></strong></li></ul>
-    <ul>
-      <% if (usuario.rol === 'admin') { %>
-        <li><a href="/clientes">Clientes</a></li>
-        <li><a href="/usuarios">Usuarios</a></li>
-      <% } else { %>
-        <li><a href="/clientes/<%= usuario.clienteId %>/mensajes">Mensajes</a></li>
-        <li><a href="/clientes/<%= usuario.clienteId %>/escalamientos">Escalamientos</a></li>
-        <li><a href="/clientes/<%= usuario.clienteId %>/pedidos">Pedidos</a></li>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><%- icons.bot %> Portal</div>
+
+    <% if (usuario.rol === 'admin') { %>
+      <div class="sidebar-section">Administración</div>
+      <nav class="sidebar-nav">
+        <a href="/clientes" class="<%= currentPath.startsWith('/clientes') && !currentPath.match(/^\/clientes\/\d/) ? 'active' : '' %>">
+          <%- icons.briefcase %><span class="label">Clientes</span>
+        </a>
+        <a href="/usuarios" class="<%= currentPath.startsWith('/usuarios') ? 'active' : '' %>">
+          <%- icons.users %><span class="label">Usuarios</span>
+        </a>
+      </nav>
+      <% if (typeof cliente !== 'undefined' && cliente) { %>
+        <div class="sidebar-section">Viendo: <%= cliente.razonSocial %></div>
+        <nav class="sidebar-nav">
+          <a href="/clientes/<%= clienteId %>/mensajes" class="<%= currentPath.endsWith('/mensajes') ? 'active' : '' %>">
+            <%- icons.message %><span class="label">Mensajes</span>
+          </a>
+          <a href="/clientes/<%= clienteId %>/escalamientos" class="<%= currentPath.endsWith('/escalamientos') ? 'active' : '' %>">
+            <%- icons.alertTriangle %><span class="label">Escalamientos</span>
+          </a>
+          <a href="/clientes/<%= clienteId %>/pedidos" class="<%= currentPath.includes('/pedidos') ? 'active' : '' %>">
+            <%- icons.truck %><span class="label">Pedidos</span>
+          </a>
+        </nav>
       <% } %>
-    </ul>
-    <ul>
-      <li>
-        <form method="POST" action="/logout" style="margin: 0;">
-          <button type="submit" class="secondary outline">Salir</button>
-        </form>
-      </li>
-    </ul>
-  </nav>
-  <% if (usuario.rol === 'admin' && typeof cliente !== 'undefined' && cliente) { %>
-    <p><a href="/clientes">&larr; Volver a Clientes</a> — viendo: <strong><%= cliente.razonSocial %></strong></p>
-  <% } %>
-</header>
-<main class="container">
+    <% } else { %>
+      <div class="sidebar-section">Tu cuenta</div>
+      <nav class="sidebar-nav">
+        <a href="/clientes/<%= usuario.clienteId %>/mensajes" class="<%= currentPath.endsWith('/mensajes') ? 'active' : '' %>">
+          <%- icons.message %><span class="label">Mensajes</span>
+        </a>
+        <a href="/clientes/<%= usuario.clienteId %>/escalamientos" class="<%= currentPath.endsWith('/escalamientos') ? 'active' : '' %>">
+          <%- icons.alertTriangle %><span class="label">Escalamientos</span>
+        </a>
+        <a href="/clientes/<%= usuario.clienteId %>/pedidos" class="<%= currentPath.includes('/pedidos') ? 'active' : '' %>">
+          <%- icons.truck %><span class="label">Pedidos</span>
+        </a>
+      </nav>
+    <% } %>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <strong><%= usuario.rol === 'admin' ? 'Panel Admin' : usuario.razonSocial %></strong>
+        <%= usuario.email %>
+      </div>
+      <form method="POST" action="/logout" class="inline" style="width: 100%;">
+        <button type="submit" class="btn-logout"><%- icons.logOut %><span class="label">Salir</span></button>
+      </form>
+    </div>
+  </aside>
+
+  <main class="main">

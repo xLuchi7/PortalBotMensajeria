@@ -1,30 +1,43 @@
 <%- include('partials/header') %>
 
-<h2>Escalamientos</h2>
-<table>
-  <thead>
-    <tr><th>Fecha</th><th>Usuario</th><th>Motivo</th><th>Estado</th><th></th></tr>
-  </thead>
-  <tbody>
-    <% escalamientos.forEach(e => { %>
-      <tr>
-        <td><%= new Date(e.fecha).toLocaleString('es-AR') %></td>
-        <td><%= e.userId %></td>
-        <td><%= e.motivo %></td>
-        <td><%= e.resuelto ? 'Resuelto' : 'Pendiente' %></td>
-        <td>
-          <% if (!e.resuelto) { %>
-            <form method="POST" action="/clientes/<%= clienteId %>/escalamientos/<%= e.id %>/resolver" style="margin: 0;">
-              <button type="submit" class="outline">Marcar resuelto</button>
-            </form>
-          <% } %>
-        </td>
-      </tr>
-    <% }) %>
-    <% if (!escalamientos.length) { %>
-      <tr><td colspan="5">No hay escalamientos.</td></tr>
-    <% } %>
-  </tbody>
-</table>
+<div class="topbar"><h1>Escalamientos</h1></div>
+
+<div class="card">
+  <% if (!escalamientos.length) { %>
+    <div class="empty-state">
+      <%- icons.alertTriangle %>
+      <p>No hay escalamientos.</p>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Fecha</th><th>Usuario</th><th>Motivo</th><th>Estado</th><th></th></tr>
+        </thead>
+        <tbody>
+          <% escalamientos.forEach(e => { %>
+            <tr>
+              <td><%= new Date(e.fecha).toLocaleString('es-AR') %></td>
+              <td><%= e.userId %></td>
+              <td><%= e.motivo %></td>
+              <td>
+                <span class="badge <%= e.resuelto ? 'badge-resuelto' : 'badge-pendiente' %>">
+                  <%= e.resuelto ? 'Resuelto' : 'Pendiente' %>
+                </span>
+              </td>
+              <td>
+                <% if (!e.resuelto) { %>
+                  <form method="POST" action="/clientes/<%= clienteId %>/escalamientos/<%= e.id %>/resolver" class="inline">
+                    <button type="submit" class="btn btn-outline">Marcar resuelto</button>
+                  </form>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
 
 <%- include('partials/footer') %>

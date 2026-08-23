@@ -1,21 +1,28 @@
 <%- include('partials/header') %>
 
-<h2>Pedido #<%= pedidoId %></h2>
-<p><a href="/clientes/<%= clienteId %>/pedidos">&larr; Volver a Pedidos</a></p>
-<table>
-  <thead>
-    <tr><th>Artículo</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal</th></tr>
-  </thead>
-  <tbody>
-    <% items.forEach(i => { %>
-      <tr>
-        <td><%= i.nombre %></td>
-        <td><%= i.cantidad %></td>
-        <td>$<%= Number(i.precioUnitario).toLocaleString('es-AR') %></td>
-        <td>$<%= Number(i.subtotal).toLocaleString('es-AR') %></td>
-      </tr>
-    <% }) %>
-  </tbody>
-</table>
+<div class="breadcrumb">
+  <a href="/clientes/<%= clienteId %>/pedidos"><%- icons.arrowLeft %> Pedidos</a> / <strong>#<%= pedidoId %></strong>
+</div>
+<div class="topbar"><h1>Pedido #<%= pedidoId %></h1></div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Artículo</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal</th></tr>
+      </thead>
+      <tbody>
+        <% items.forEach(i => { %>
+          <tr>
+            <td><%= i.nombre %></td>
+            <td><%= i.cantidad %></td>
+            <td>$<%= Number(i.precioUnitario).toLocaleString('es-AR') %></td>
+            <td>$<%= Number(i.subtotal).toLocaleString('es-AR') %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</div>
 
 <%- include('partials/footer') %>

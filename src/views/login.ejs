@@ -4,15 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Ingresar — Portal de Clientes</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<main class="container" style="max-width: 420px; margin-top: 10vh;">
-  <article>
-    <h2>Portal de Clientes</h2>
+<div class="login-shell">
+  <div class="login-card">
+    <div class="login-brand"><%- icons.bot %> Portal de Clientes</div>
+
     <% if (error) { %>
-      <p style="color: #c0392b;"><%= error %></p>
+      <div class="alert alert-error"><%= error %></div>
     <% } %>
+
     <form method="POST" action="/login">
       <label>
         Email
@@ -22,9 +24,9 @@
         Contraseña
         <input type="password" name="password" required>
       </label>
-      <button type="submit">Ingresar</button>
+      <button type="submit" class="btn btn-primary">Ingresar</button>
     </form>
-  </article>
-</main>
+  </div>
+</div>
 </body>
 </html>

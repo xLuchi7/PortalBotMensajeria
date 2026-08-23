@@ -82,9 +82,13 @@ router.get('/clientes/:clienteId/pedidos', resolveClienteAccess, async (req, res
 
 router.get('/clientes/:clienteId/pedidos/:id', resolveClienteAccess, async (req, res, next) => {
   try {
-    const detalle = await pedidos.obtenerDetalle(req.params.id, req.clienteId);
+    const [cliente, detalle] = await Promise.all([
+      clientes.obtenerCliente(req.clienteId),
+      pedidos.obtenerDetalle(req.params.id, req.clienteId),
+    ]);
     res.render('pedido-detalle', {
       usuario: req.session.usuario,
+      cliente,
       clienteId: req.clienteId,
       pedidoId: req.params.id,
       items: detalle,

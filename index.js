@@ -12,12 +12,15 @@ const authRoutes = require('./src/routes/auth');
 const dashboardRoutes = require('./src/routes/dashboard');
 const usuariosRoutes = require('./src/routes/usuarios');
 const { getPool } = require('./src/services/db');
+const icons = require('./src/icons');
 
 const app = express();
 
 app.set('view engine', 'ejs');
 app.set('views', './src/views');
+app.locals.icons = icons;
 
+app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
   secret: config.sessionSecret,
@@ -25,6 +28,10 @@ app.use(session({
   saveUninitialized: false,
   cookie: { maxAge: 8 * 60 * 60 * 1000 }, // 8hs
 }));
+app.use((req, res, next) => {
+  res.locals.currentPath = req.path;
+  next();
+});
 
 app.use('/', authRoutes);
 app.use('/', dashboardRoutes);

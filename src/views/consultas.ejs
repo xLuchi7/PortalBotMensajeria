@@ -1,0 +1,60 @@
+<%- include('partials/header') %>
+
+<div class="topbar"><h1>Consultas</h1></div>
+
+<div class="card">
+  <div class="card-header">
+    <span><strong><%= total %></strong>&nbsp;en total</span>
+    <span><%= sinStock %> sin stock</span>
+  </div>
+  <% if (!rows.length) { %>
+    <div class="empty-state">
+      <%- icons.search %>
+      <p>No hay consultas registradas.</p>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Fecha</th><th>Usuario</th><th class="col-center">Tipo</th><th>Detalle</th><th class="col-center">Estado</th></tr>
+        </thead>
+        <tbody>
+          <% rows.forEach(c => { %>
+            <tr>
+              <td><%= c.fecha %></td>
+              <td><%= c.userId %></td>
+              <td class="col-center">
+                <% if (c.tipo === 'articulo') { %>
+                  <span class="badge badge-info">Artículo</span>
+                <% } else { %>
+                  <span class="badge badge-warning">Pedido</span>
+                <% } %>
+              </td>
+              <td>
+                <% if (c.tipo === 'articulo') { %>
+                  Buscó "<%= c.detalle %>"<% if (c.articuloNombre) { %> — <%= c.articuloNombre %><% } %>
+                <% } else { %>
+                  Consultó el estado de sus pedidos<% if (c.pedidoId) { %> — Pedido #<%= c.pedidoId %><% } %>
+                <% } %>
+              </td>
+              <td class="col-center">
+                <% if (c.tipo === 'articulo') { %>
+                  <% if (c.sinStock) { %>
+                    <span class="badge badge-danger">Sin stock</span>
+                  <% } %>
+                <% } else if (c.pedidoEstado) { %>
+                  <span class="badge badge-<%= c.pedidoEstado %>"><%= c.pedidoEstado %></span>
+                <% } else { %>
+                  <span class="badge badge-danger">Sin pedidos</span>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <%- include('partials/pagination') %>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

@@ -37,6 +37,9 @@
           <a href="/clientes/<%= clienteId %>/escalamientos" class="<%= currentPath.endsWith('/escalamientos') ? 'active' : '' %>">
             <%- icons.alertTriangle %><span class="label">Escalamientos</span>
           </a>
+          <a href="/clientes/<%= clienteId %>/consultas" class="<%= currentPath.endsWith('/consultas') ? 'active' : '' %>">
+            <%- icons.search %><span class="label">Consultas</span>
+          </a>
         </nav>
       <% } %>
     <% } else { %>
@@ -53,6 +56,9 @@
         </a>
         <a href="/clientes/<%= usuario.clienteId %>/escalamientos" class="<%= currentPath.endsWith('/escalamientos') ? 'active' : '' %>">
           <%- icons.alertTriangle %><span class="label">Escalamientos</span>
+        </a>
+        <a href="/clientes/<%= usuario.clienteId %>/consultas" class="<%= currentPath.endsWith('/consultas') ? 'active' : '' %>">
+          <%- icons.search %><span class="label">Consultas</span>
         </a>
       </nav>
     <% } %>

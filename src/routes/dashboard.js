@@ -5,6 +5,7 @@ const escalamientos = require('../services/escalamientoService');
 const pedidos = require('../services/pedidoService');
 const clientes = require('../services/clienteService');
 const articulos = require('../services/articuloService');
+const consultas = require('../services/consultaService');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -233,6 +234,18 @@ router.get('/clientes/:clienteId/pedidos/:id', resolveClienteAccess, async (req,
       pedidoId: req.params.id,
       items: detalle,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/clientes/:clienteId/consultas', resolveClienteAccess, async (req, res, next) => {
+  try {
+    const [cliente, resultado] = await Promise.all([
+      clientes.obtenerCliente(req.clienteId),
+      consultas.listarConsultas(req.clienteId, paginaDe(req)),
+    ]);
+    res.render('consultas', { usuario: req.session.usuario, cliente, clienteId: req.clienteId, ...resultado });
   } catch (err) {
     next(err);
   }

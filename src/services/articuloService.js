@@ -18,7 +18,7 @@ async function listarArticulos(clienteId, page = 1) {
       .input('offset', sql.Int, offset)
       .input('pageSize', sql.Int, PAGE_SIZE)
       .query(`
-        SELECT a.id, a.codigo, a.nombre, a.descripcion, a.precio, a.activo, ISNULL(s.cantidad, 0) AS stock
+        SELECT a.id, a.codigo, a.nombre, a.descripcion, a.precio, a.activo, a.usaStock, ISNULL(s.cantidad, 0) AS stock
         FROM Articulos a
         LEFT JOIN Stock s ON s.articuloId = a.id
         WHERE a.clienteId = @clienteId
@@ -45,11 +45,11 @@ async function obtenerArticulo(id, clienteId) {
     .request()
     .input('id', sql.Int, id)
     .input('clienteId', sql.Int, clienteId)
-    .query('SELECT id, codigo, nombre, descripcion, precio, activo FROM Articulos WHERE id = @id AND clienteId = @clienteId');
+    .query('SELECT id, codigo, nombre, descripcion, precio, activo, usaStock FROM Articulos WHERE id = @id AND clienteId = @clienteId');
   return result.recordset[0] ?? null;
 }
 
-async function crearArticulo(clienteId, { codigo, nombre, descripcion, precio, cantidadInicial }) {
+async function crearArticulo(clienteId, { codigo, nombre, descripcion, precio, cantidadInicial, usaStock }) {
   const pool = await getPool();
   const transaction = new sql.Transaction(pool);
   await transaction.begin();
@@ -60,10 +60,11 @@ async function crearArticulo(clienteId, { codigo, nombre, descripcion, precio, c
       .input('nombre', sql.NVarChar, nombre)
       .input('descripcion', sql.NVarChar, descripcion || null)
       .input('precio', sql.Decimal(12, 2), precio || null)
+      .input('usaStock', sql.Bit, usaStock ? 1 : 0)
       .query(`
-        INSERT INTO Articulos (clienteId, codigo, nombre, descripcion, precio)
+        INSERT INTO Articulos (clienteId, codigo, nombre, descripcion, precio, usaStock)
         OUTPUT INSERTED.id
-        VALUES (@clienteId, @codigo, @nombre, @descripcion, @precio)
+        VALUES (@clienteId, @codigo, @nombre, @descripcion, @precio, @usaStock)
       `);
 
     const articuloId = result.recordset[0].id;
@@ -80,7 +81,7 @@ async function crearArticulo(clienteId, { codigo, nombre, descripcion, precio, c
   }
 }
 
-async function actualizarArticulo(id, clienteId, { codigo, nombre, descripcion, precio }) {
+async function actualizarArticulo(id, clienteId, { codigo, nombre, descripcion, precio, usaStock }) {
   const pool = await getPool();
   await pool
     .request()
@@ -90,9 +91,10 @@ async function actualizarArticulo(id, clienteId, { codigo, nombre, descripcion, 
     .input('nombre', sql.NVarChar, nombre)
     .input('descripcion', sql.NVarChar, descripcion || null)
     .input('precio', sql.Decimal(12, 2), precio || null)
+    .input('usaStock', sql.Bit, usaStock ? 1 : 0)
     .query(`
       UPDATE Articulos
-      SET codigo = @codigo, nombre = @nombre, descripcion = @descripcion, precio = @precio
+      SET codigo = @codigo, nombre = @nombre, descripcion = @descripcion, precio = @precio, usaStock = @usaStock
       WHERE id = @id AND clienteId = @clienteId
     `);
 }

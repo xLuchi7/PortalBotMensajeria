@@ -116,8 +116,8 @@ router.get('/clientes/:clienteId/articulos/nuevo', resolveClienteAccess, (req, r
 
 router.post('/clientes/:clienteId/articulos/nuevo', resolveClienteAccess, async (req, res, next) => {
   try {
-    const { codigo, nombre, descripcion, precio, cantidadInicial } = req.body;
-    await articulos.crearArticulo(req.clienteId, { codigo, nombre, descripcion, precio, cantidadInicial });
+    const { codigo, nombre, descripcion, precio, cantidadInicial, usaStock } = req.body;
+    await articulos.crearArticulo(req.clienteId, { codigo, nombre, descripcion, precio, cantidadInicial, usaStock: !!usaStock });
     res.redirect(`/clientes/${req.clienteId}/articulos`);
   } catch (err) {
     next(err);
@@ -136,8 +136,8 @@ router.get('/clientes/:clienteId/articulos/:id/editar', resolveClienteAccess, as
 
 router.post('/clientes/:clienteId/articulos/:id/editar', resolveClienteAccess, async (req, res, next) => {
   try {
-    const { codigo, nombre, descripcion, precio } = req.body;
-    await articulos.actualizarArticulo(req.params.id, req.clienteId, { codigo, nombre, descripcion, precio });
+    const { codigo, nombre, descripcion, precio, usaStock } = req.body;
+    await articulos.actualizarArticulo(req.params.id, req.clienteId, { codigo, nombre, descripcion, precio, usaStock: !!usaStock });
     res.redirect(`/clientes/${req.clienteId}/articulos`);
   } catch (err) {
     next(err);

@@ -28,10 +28,14 @@
               <td><%= a.nombre %></td>
               <td><%= a.precio != null ? '$' + Number(a.precio).toLocaleString('es-AR') : '-' %></td>
               <td class="col-center">
-                <form method="POST" action="/clientes/<%= clienteId %>/articulos/<%= a.id %>/stock" class="stock-form">
-                  <input type="number" name="cantidad" value="<%= a.stock %>" min="0" class="stock-input">
-                  <button type="submit" class="icon-btn" title="Guardar stock"><%- icons.save %></button>
-                </form>
+                <% if (a.usaStock) { %>
+                  <form method="POST" action="/clientes/<%= clienteId %>/articulos/<%= a.id %>/stock" class="stock-form">
+                    <input type="number" name="cantidad" value="<%= a.stock %>" min="0" class="stock-input">
+                    <button type="submit" class="icon-btn" title="Guardar stock"><%- icons.save %></button>
+                  </form>
+                <% } else { %>
+                  <span class="field-hint">sin control</span>
+                <% } %>
               </td>
               <td class="col-center"><span class="badge <%= a.activo ? 'badge-activo' : 'badge-inactivo' %>"><%= a.activo ? 'Activo' : 'Inactivo' %></span></td>
               <td>

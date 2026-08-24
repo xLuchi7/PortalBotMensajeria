@@ -27,11 +27,20 @@
       Precio
       <input type="number" name="precio" step="0.01" min="0" value="<%= editar && editar.precio != null ? editar.precio : '' %>">
     </label>
+    <% const usaStockActual = editar ? editar.usaStock : true; %>
+    <label style="display: flex; align-items: center; gap: 0.5rem;">
+      <input type="checkbox" name="usaStock" id="usaStock" style="width: auto; margin: 0;"
+             onchange="document.getElementById('stockInicialField').style.display = this.checked ? 'block' : 'none';"
+             <%= usaStockActual ? 'checked' : '' %>>
+      Usa control de Stock <span class="field-hint">(si lo desmarcás, el bot lo ofrece siempre disponible sin mirar Stock)</span>
+    </label>
     <% if (!editar) { %>
-      <label>
-        Stock inicial
-        <input type="number" name="cantidadInicial" min="0" value="0">
-      </label>
+      <div id="stockInicialField" style="display: <%= usaStockActual ? 'block' : 'none' %>;">
+        <label>
+          Stock inicial
+          <input type="number" name="cantidadInicial" min="0" value="0">
+        </label>
+      </div>
     <% } %>
     <button type="submit" class="btn btn-primary"><%= editar ? 'Guardar cambios' : 'Crear artículo' %></button>
   </form>

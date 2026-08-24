@@ -100,9 +100,16 @@ async function actualizarEstado(pedidoId, clienteId, nuevoEstado) {
   try {
     const items = await new sql.Request(transaction)
       .input('pedidoId', sql.Int, pedidoId)
-      .query('SELECT articuloId, cantidad FROM DetallePedidos WHERE pedidoId = @pedidoId');
+      .query(`
+        SELECT d.articuloId, d.cantidad, a.usaStock
+        FROM DetallePedidos d
+        JOIN Articulos a ON a.id = d.articuloId
+        WHERE d.pedidoId = @pedidoId
+      `);
 
-    for (const item of items.recordset) {
+    // Los artículos sin control de stock (usaStock = 0) no tienen un número
+    // real que descontar — se tratan como siempre disponibles.
+    for (const item of items.recordset.filter(i => i.usaStock)) {
       await new sql.Request(transaction)
         .input('articuloId', sql.Int, item.articuloId)
         .input('cantidad', sql.Int, item.cantidad)

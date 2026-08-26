@@ -232,8 +232,8 @@ tbody tr.row-inactive { opacity: 0.55; }
 }
 .badge-pendiente, .badge-warning { background: var(--warning-soft); color: #92400e; }
 .badge-confirmado, .badge-en_proceso, .badge-info { background: var(--info-soft); color: #1e40af; }
-.badge-entregado, .badge-resuelto, .badge-success, .badge-activo { background: var(--success-soft); color: #166534; }
-.badge-cancelado, .badge-danger, .badge-inactivo { background: var(--danger-soft); color: #991b1b; }
+.badge-entregado, .badge-resuelto, .badge-success, .badge-activo, .badge-solucionado { background: var(--success-soft); color: #166534; }
+.badge-cancelado, .badge-danger, .badge-inactivo, .badge-reclamado { background: var(--danger-soft); color: #991b1b; }
 .badge-admin { background: #ede9fe; color: #5b21b6; }
 .badge-cliente { background: #e0f2fe; color: #075985; }
 

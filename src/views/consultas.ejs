@@ -19,6 +19,7 @@
           <tr><th>Fecha</th><th>Usuario</th><th class="col-center">Tipo</th><th>Detalle</th><th class="col-center">Estado</th></tr>
         </thead>
         <tbody>
+          <% const ESTADO_LABEL = { pendiente: 'Pendiente', confirmado: 'Confirmado', entregado: 'Entregado', cancelado: 'Cancelado', reclamado: 'Reclamado', solucionado: 'Solucionado' }; %>
           <% rows.forEach(c => { %>
             <tr>
               <td><%= c.fecha %></td>
@@ -43,7 +44,7 @@
                     <span class="badge badge-danger">Sin stock</span>
                   <% } %>
                 <% } else if (c.pedidoEstado) { %>
-                  <span class="badge badge-<%= c.pedidoEstado %>"><%= c.pedidoEstado %></span>
+                  <span class="badge badge-<%= c.pedidoEstado %>"><%= ESTADO_LABEL[c.pedidoEstado] || c.pedidoEstado %></span>
                 <% } else { %>
                   <span class="badge badge-danger">Sin pedidos</span>
                 <% } %>

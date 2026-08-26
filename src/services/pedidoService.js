@@ -1,7 +1,7 @@
 const { getPool, sql } = require('./db');
 
 const PAGE_SIZE = 20;
-const ESTADOS_FINALES = ['entregado', 'cancelado'];
+const ESTADOS_FINALES = ['entregado', 'cancelado', 'solucionado'];
 
 class EstadoFinalError extends Error {
   constructor() {
@@ -69,9 +69,11 @@ async function obtenerDetalle(pedidoId, clienteId) {
   return result.recordset;
 }
 
-// entregado/cancelado son estados finales: una vez ahi, no se puede volver a
-// tocar el pedido. Al marcar "entregado" se descuenta el Stock recien ahi
+// entregado/cancelado/solucionado son estados finales: una vez ahi, no se puede
+// volver a tocar el pedido. Al marcar "entregado" se descuenta el Stock recien ahi
 // (no al crear el pedido), porque es cuando realmente salio la mercaderia.
+// "reclamado" lo pone el bot directamente en la base (ver Bot_Mensajeria), no se
+// elige desde este flujo -- solo su transicion a "solucionado" pasa por aca.
 async function actualizarEstado(pedidoId, clienteId, nuevoEstado) {
   const pool = await getPool();
 
@@ -83,6 +85,16 @@ async function actualizarEstado(pedidoId, clienteId, nuevoEstado) {
 
   const pedido = actual.recordset[0];
   if (!pedido) throw new Error('Pedido no encontrado.');
+
+  // Reclamado lo pone el bot (no es un estado que se elija a mano) y no es "final"
+  // en el sentido normal, pero el único paso siguiente válido es Solucionado — no
+  // tiene sentido confirmar o cancelar un pedido que ya se entregó y está en medio
+  // de un reclamo.
+  if (pedido.estado === 'reclamado') {
+    if (nuevoEstado !== 'solucionado') throw new Error('Un pedido reclamado solo puede pasar a Solucionado.');
+    return marcarComoSolucionado(pool, pedidoId, clienteId);
+  }
+
   if (ESTADOS_FINALES.includes(pedido.estado)) throw new EstadoFinalError();
 
   if (nuevoEstado !== 'entregado') {
@@ -120,6 +132,46 @@ async function actualizarEstado(pedidoId, clienteId, nuevoEstado) {
       .input('pedidoId', sql.Int, pedidoId)
       .input('clienteId', sql.Int, clienteId)
       .query("UPDATE Pedidos SET estado = 'entregado' WHERE id = @pedidoId AND clienteId = @clienteId");
+
+    await transaction.commit();
+  } catch (err) {
+    await transaction.rollback();
+    throw err;
+  }
+}
+
+// Devuelve el Stock que se había descontado al entregar (mismas líneas, mismos
+// usaStock) y resuelve los Escalamientos ligados a este pedido — el reclamo del
+// cliente y el estado del pedido son, en la práctica, la misma cosa resuelta.
+async function marcarComoSolucionado(pool, pedidoId, clienteId) {
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+  try {
+    const items = await new sql.Request(transaction)
+      .input('pedidoId', sql.Int, pedidoId)
+      .query(`
+        SELECT d.articuloId, d.cantidad, a.usaStock
+        FROM DetallePedidos d
+        JOIN Articulos a ON a.id = d.articuloId
+        WHERE d.pedidoId = @pedidoId
+      `);
+
+    for (const item of items.recordset.filter(i => i.usaStock)) {
+      await new sql.Request(transaction)
+        .input('articuloId', sql.Int, item.articuloId)
+        .input('cantidad', sql.Int, item.cantidad)
+        .query('UPDATE Stock SET cantidad = cantidad + @cantidad, actualizado = SYSUTCDATETIME() WHERE articuloId = @articuloId');
+    }
+
+    await new sql.Request(transaction)
+      .input('pedidoId', sql.Int, pedidoId)
+      .input('clienteId', sql.Int, clienteId)
+      .query("UPDATE Pedidos SET estado = 'solucionado' WHERE id = @pedidoId AND clienteId = @clienteId");
+
+    await new sql.Request(transaction)
+      .input('pedidoId', sql.Int, pedidoId)
+      .input('clienteId', sql.Int, clienteId)
+      .query("UPDATE Escalamientos SET estado = 'resuelto' WHERE pedidoId = @pedidoId AND clienteId = @clienteId AND estado <> 'resuelto'");
 
     await transaction.commit();
   } catch (err) {

@@ -1,7 +1,7 @@
 <%- include('partials/header') %>
 
 <div class="topbar"><h1>Pedidos</h1></div>
-<p class="page-hint">Al marcar un pedido como <strong>Entregado</strong> se descuenta el Stock de cada artículo. "Entregado" y "Cancelado" son estados finales: una vez ahí no se pueden volver a cambiar.</p>
+<p class="page-hint">Al marcar un pedido como <strong>Entregado</strong> se descuenta el Stock de cada artículo. "Entregado", "Cancelado" y "Solucionado" son estados finales: una vez ahí no se pueden volver a cambiar. Un pedido pasa a <strong>Reclamado</strong> automáticamente cuando el bot detecta un reclamo sobre él; al marcarlo <strong>Solucionado</strong> se devuelve el Stock y se resuelve el Escalamiento asociado.</p>
 
 <div class="card">
   <div class="card-header">
@@ -20,15 +20,23 @@
           <tr><th>Fecha</th><th>Usuario</th><th>Total</th><th class="col-center">Estado</th><th>Notas</th><th></th></tr>
         </thead>
         <tbody>
-          <% const ESTADOS_FINALES = ['entregado', 'cancelado']; %>
+          <% const ESTADOS_FINALES = ['entregado', 'cancelado', 'solucionado']; %>
+          <% const ESTADO_LABEL = { entregado: 'Entregado', cancelado: 'Cancelado', solucionado: 'Solucionado' }; %>
           <% rows.forEach(p => { %>
             <tr>
               <td><%= p.fecha %></td>
               <td><%= p.userId %></td>
               <td>$<%= Number(p.total).toLocaleString('es-AR') %></td>
               <td class="col-center">
-                <% if (ESTADOS_FINALES.includes(p.estado)) { %>
-                  <span class="badge badge-<%= p.estado %>"><%= p.estado === 'entregado' ? 'Entregado' : 'Cancelado' %></span>
+                <% if (p.estado === 'reclamado') { %>
+                  <form method="POST" action="/clientes/<%= clienteId %>/pedidos/<%= p.id %>/estado" class="inline">
+                    <select name="estado" onchange="this.form.submit()" class="badge-select badge-reclamado">
+                      <option value="reclamado" selected>Reclamado</option>
+                      <option value="solucionado">Solucionado</option>
+                    </select>
+                  </form>
+                <% } else if (ESTADOS_FINALES.includes(p.estado)) { %>
+                  <span class="badge badge-<%= p.estado %>"><%= ESTADO_LABEL[p.estado] %></span>
                 <% } else { %>
                   <form method="POST" action="/clientes/<%= clienteId %>/pedidos/<%= p.id %>/estado" class="inline">
                     <select name="estado" onchange="this.form.submit()" class="badge-select badge-<%= p.estado %>">

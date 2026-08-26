@@ -239,6 +239,15 @@ router.get('/clientes/:clienteId/pedidos/:id', resolveClienteAccess, async (req,
   }
 });
 
+router.post('/clientes/:clienteId/pedidos/:id/notas', resolveClienteAccess, async (req, res, next) => {
+  try {
+    await pedidos.actualizarNotas(req.params.id, req.clienteId, req.body.notas);
+    res.redirect(`/clientes/${req.clienteId}/pedidos`);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/clientes/:clienteId/consultas', resolveClienteAccess, async (req, res, next) => {
   try {
     const [cliente, resultado] = await Promise.all([

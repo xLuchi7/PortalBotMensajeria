@@ -180,4 +180,16 @@ async function marcarComoSolucionado(pool, pedidoId, clienteId) {
   }
 }
 
-module.exports = { listarPedidos, obtenerDetalle, actualizarEstado, EstadoFinalError };
+// Las notas son metadata libre del staff, no un paso del flujo de estados —
+// se pueden editar en cualquier momento, incluso con el pedido en un estado final.
+async function actualizarNotas(pedidoId, clienteId, notas) {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input('pedidoId', sql.Int, pedidoId)
+    .input('clienteId', sql.Int, clienteId)
+    .input('notas', sql.NVarChar(500), notas || null)
+    .query('UPDATE Pedidos SET notas = @notas WHERE id = @pedidoId AND clienteId = @clienteId');
+}
+
+module.exports = { listarPedidos, obtenerDetalle, actualizarEstado, actualizarNotas, EstadoFinalError };

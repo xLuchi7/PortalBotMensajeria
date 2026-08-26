@@ -17,15 +17,16 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Fecha</th><th>Usuario</th><th>Total</th><th class="col-center">Estado</th><th>Notas</th><th></th></tr>
+          <tr><th class="col-id">#</th><th class="col-fecha">Fecha</th><th class="col-usuario">Usuario</th><th>Total</th><th class="col-center">Estado</th><th>Notas</th><th></th></tr>
         </thead>
         <tbody>
           <% const ESTADOS_FINALES = ['entregado', 'cancelado', 'solucionado']; %>
           <% const ESTADO_LABEL = { entregado: 'Entregado', cancelado: 'Cancelado', solucionado: 'Solucionado' }; %>
           <% rows.forEach(p => { %>
             <tr>
-              <td><%= p.fecha %></td>
-              <td><%= p.userId %></td>
+              <td>#<%= p.id %></td>
+              <td class="col-fecha"><%= p.fecha %></td>
+              <td class="col-usuario"><%= p.userId %></td>
               <td>$<%= Number(p.total).toLocaleString('es-AR') %></td>
               <td class="col-center">
                 <% if (p.estado === 'reclamado') { %>
@@ -48,7 +49,12 @@
                   </form>
                 <% } %>
               </td>
-              <td><%= p.notas || '-' %></td>
+              <td>
+                <div class="notas-cell">
+                  <span><%= p.notas || '-' %></span>
+                  <button type="button" class="icon-btn" title="Editar notas" onclick="abrirNotas(<%= p.id %>, <%= JSON.stringify(p.notas || '') %>)"><%- icons.edit %></button>
+                </div>
+              </td>
               <td>
                 <a href="/clientes/<%= clienteId %>/pedidos/<%= p.id %>" class="icon-btn" title="Ver detalle"><%- icons.eye %></a>
               </td>
@@ -60,5 +66,26 @@
     <%- include('partials/pagination') %>
   <% } %>
 </div>
+
+<dialog id="notas-dialog" class="modal">
+  <form method="POST" id="notas-form">
+    <h3>Notas del pedido #<span id="notas-dialog-pedido"></span></h3>
+    <textarea name="notas" id="notas-textarea" rows="5" maxlength="500" placeholder="Sin notas"></textarea>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" onclick="document.getElementById('notas-dialog').close()">Cancelar</button>
+      <button type="submit" class="btn btn-primary">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+  const CLIENTE_ID = <%= clienteId %>;
+  function abrirNotas(pedidoId, notas) {
+    document.getElementById('notas-form').action = `/clientes/${CLIENTE_ID}/pedidos/${pedidoId}/notas`;
+    document.getElementById('notas-dialog-pedido').textContent = pedidoId;
+    document.getElementById('notas-textarea').value = notas;
+    document.getElementById('notas-dialog').showModal();
+  }
+</script>
 
 <%- include('partials/footer') %>

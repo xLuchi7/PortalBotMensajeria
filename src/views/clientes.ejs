@@ -35,6 +35,7 @@
                   <a href="/clientes/<%= c.id %>/articulos" class="icon-btn" title="Artículos"><%- icons.package %></a>
                   <a href="/clientes/<%= c.id %>/pedidos" class="icon-btn" title="Pedidos"><%- icons.truck %></a>
                   <a href="/clientes/<%= c.id %>/escalamientos" class="icon-btn" title="Escalamientos"><%- icons.alertTriangle %></a>
+                  <a href="/clientes/<%= c.id %>/consultas" class="icon-btn" title="Consultas"><%- icons.search %></a>
                   <a href="/clientes/<%= c.id %>/editar" class="icon-btn" title="Editar"><%- icons.edit %></a>
                   <% if (c.activo) { %>
                     <form method="POST" action="/clientes/<%= c.id %>/borrar" class="inline"

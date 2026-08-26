@@ -4,6 +4,7 @@
   <h1>Clientes</h1>
   <a href="/clientes/nuevo" class="btn btn-primary"><%- icons.plus %> Nuevo cliente</a>
 </div>
+<p class="page-hint">Cada fila es un negocio que usa el bot (no sus clientes finales). Desde acá accedés a sus Pedidos, Artículos, Mensajes, Consultas y Escalamientos, y podés desactivarlo sin perder su historial.</p>
 
 <div class="card">
   <div class="card-header">
@@ -31,11 +32,11 @@
               <td class="col-center"><span class="badge <%= c.activo ? 'badge-activo' : 'badge-inactivo' %>"><%= c.activo ? 'Activo' : 'Inactivo' %></span></td>
               <td>
                 <div class="cell-actions">
-                  <a href="/clientes/<%= c.id %>/mensajes" class="icon-btn" title="Mensajes"><%- icons.message %></a>
-                  <a href="/clientes/<%= c.id %>/articulos" class="icon-btn" title="Artículos"><%- icons.package %></a>
                   <a href="/clientes/<%= c.id %>/pedidos" class="icon-btn" title="Pedidos"><%- icons.truck %></a>
-                  <a href="/clientes/<%= c.id %>/escalamientos" class="icon-btn" title="Escalamientos"><%- icons.alertTriangle %></a>
+                  <a href="/clientes/<%= c.id %>/articulos" class="icon-btn" title="Artículos"><%- icons.package %></a>
+                  <a href="/clientes/<%= c.id %>/mensajes" class="icon-btn" title="Mensajes"><%- icons.message %></a>
                   <a href="/clientes/<%= c.id %>/consultas" class="icon-btn" title="Consultas"><%- icons.search %></a>
+                  <a href="/clientes/<%= c.id %>/escalamientos" class="icon-btn" title="Escalamientos"><%- icons.alertTriangle %></a>
                   <a href="/clientes/<%= c.id %>/editar" class="icon-btn" title="Editar"><%- icons.edit %></a>
                   <% if (c.activo) { %>
                     <form method="POST" action="/clientes/<%= c.id %>/borrar" class="inline"

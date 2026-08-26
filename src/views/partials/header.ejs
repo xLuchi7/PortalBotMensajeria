@@ -25,40 +25,40 @@
       <% if (typeof cliente !== 'undefined' && cliente) { %>
         <div class="sidebar-section">Viendo: <%= cliente.razonSocial %></div>
         <nav class="sidebar-nav">
-          <a href="/clientes/<%= clienteId %>/mensajes" class="<%= currentPath.endsWith('/mensajes') ? 'active' : '' %>">
-            <%- icons.message %><span class="label">Mensajes</span>
+          <a href="/clientes/<%= clienteId %>/pedidos" class="<%= currentPath.includes('/pedidos') ? 'active' : '' %>">
+            <%- icons.truck %><span class="label">Pedidos</span>
           </a>
           <a href="/clientes/<%= clienteId %>/articulos" class="<%= currentPath.includes('/articulos') ? 'active' : '' %>">
             <%- icons.package %><span class="label">Artículos</span>
           </a>
-          <a href="/clientes/<%= clienteId %>/pedidos" class="<%= currentPath.includes('/pedidos') ? 'active' : '' %>">
-            <%- icons.truck %><span class="label">Pedidos</span>
-          </a>
-          <a href="/clientes/<%= clienteId %>/escalamientos" class="<%= currentPath.endsWith('/escalamientos') ? 'active' : '' %>">
-            <%- icons.alertTriangle %><span class="label">Escalamientos</span>
+          <a href="/clientes/<%= clienteId %>/mensajes" class="<%= currentPath.endsWith('/mensajes') ? 'active' : '' %>">
+            <%- icons.message %><span class="label">Mensajes</span>
           </a>
           <a href="/clientes/<%= clienteId %>/consultas" class="<%= currentPath.endsWith('/consultas') ? 'active' : '' %>">
             <%- icons.search %><span class="label">Consultas</span>
+          </a>
+          <a href="/clientes/<%= clienteId %>/escalamientos" class="<%= currentPath.endsWith('/escalamientos') ? 'active' : '' %>">
+            <%- icons.alertTriangle %><span class="label">Escalamientos</span>
           </a>
         </nav>
       <% } %>
     <% } else { %>
       <div class="sidebar-section">Tu cuenta</div>
       <nav class="sidebar-nav">
-        <a href="/clientes/<%= usuario.clienteId %>/mensajes" class="<%= currentPath.endsWith('/mensajes') ? 'active' : '' %>">
-          <%- icons.message %><span class="label">Mensajes</span>
+        <a href="/clientes/<%= usuario.clienteId %>/pedidos" class="<%= currentPath.includes('/pedidos') ? 'active' : '' %>">
+          <%- icons.truck %><span class="label">Pedidos</span>
         </a>
         <a href="/clientes/<%= usuario.clienteId %>/articulos" class="<%= currentPath.includes('/articulos') ? 'active' : '' %>">
           <%- icons.package %><span class="label">Artículos</span>
         </a>
-        <a href="/clientes/<%= usuario.clienteId %>/pedidos" class="<%= currentPath.includes('/pedidos') ? 'active' : '' %>">
-          <%- icons.truck %><span class="label">Pedidos</span>
-        </a>
-        <a href="/clientes/<%= usuario.clienteId %>/escalamientos" class="<%= currentPath.endsWith('/escalamientos') ? 'active' : '' %>">
-          <%- icons.alertTriangle %><span class="label">Escalamientos</span>
+        <a href="/clientes/<%= usuario.clienteId %>/mensajes" class="<%= currentPath.endsWith('/mensajes') ? 'active' : '' %>">
+          <%- icons.message %><span class="label">Mensajes</span>
         </a>
         <a href="/clientes/<%= usuario.clienteId %>/consultas" class="<%= currentPath.endsWith('/consultas') ? 'active' : '' %>">
           <%- icons.search %><span class="label">Consultas</span>
+        </a>
+        <a href="/clientes/<%= usuario.clienteId %>/escalamientos" class="<%= currentPath.endsWith('/escalamientos') ? 'active' : '' %>">
+          <%- icons.alertTriangle %><span class="label">Escalamientos</span>
         </a>
       </nav>
     <% } %>

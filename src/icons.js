@@ -58,4 +58,8 @@ module.exports = {
   ),
 
   search: wrap('<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/>'),
+
+  upload: wrap(
+    '<path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/><polyline points="8 8 12 4 16 8"/><line x1="12" y1="4" x2="12" y2="15"/>'
+  ),
 };

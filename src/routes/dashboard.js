@@ -1,4 +1,5 @@
 const express = require('express');
+const multer = require('multer');
 const { requireAuth, requireAdmin, resolveClienteAccess } = require('../middleware/requireAuth');
 const mensajes = require('../services/mensajeService');
 const escalamientos = require('../services/escalamientoService');
@@ -6,9 +7,12 @@ const pedidos = require('../services/pedidoService');
 const clientes = require('../services/clienteService');
 const articulos = require('../services/articuloService');
 const consultas = require('../services/consultaService');
+const importacion = require('../services/importService');
 
 const router = express.Router();
 router.use(requireAuth);
+
+const uploadExcel = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 function paginaDe(req) {
   return Math.max(1, parseInt(req.query.page, 10) || 1);
@@ -167,6 +171,36 @@ router.post('/clientes/:clienteId/articulos/:id/activar', resolveClienteAccess, 
   try {
     await articulos.activarArticulo(req.params.id, req.clienteId);
     res.redirect(`/clientes/${req.clienteId}/articulos`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/clientes/:clienteId/articulos/importar', resolveClienteAccess, uploadExcel.single('archivo'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo.' });
+  try {
+    const filas = await importacion.leerFilas(req.file.buffer);
+    if (!filas.length) return res.status(400).json({ error: 'El archivo no tiene filas de datos.' });
+    const jobId = importacion.crearJob(req.clienteId, filas);
+    res.json({ jobId });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/clientes/:clienteId/articulos/importar/:jobId/estado', resolveClienteAccess, (req, res) => {
+  const estado = importacion.obtenerEstado(req.params.jobId, req.clienteId);
+  if (!estado) return res.status(404).json({ error: 'Importación no encontrada (puede haber expirado).' });
+  res.json(estado);
+});
+
+router.get('/clientes/:clienteId/articulos/importar/:jobId/errores.xlsx', resolveClienteAccess, async (req, res, next) => {
+  try {
+    const buffer = await importacion.generarExcelErrores(req.params.jobId, req.clienteId);
+    if (!buffer) return res.status(404).send('No hay errores para esta importación.');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="Errores-Importacion.xlsx"');
+    res.send(buffer);
   } catch (err) {
     next(err);
   }

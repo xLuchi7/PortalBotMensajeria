@@ -2,7 +2,10 @@
 
 <div class="topbar">
   <h1>Artículos</h1>
-  <a href="/clientes/<%= clienteId %>/articulos/nuevo" class="btn btn-primary"><%- icons.plus %> Nuevo artículo</a>
+  <div class="cell-actions">
+    <button type="button" class="btn btn-outline" onclick="abrirImportar()"><%- icons.upload %> Importar Excel</button>
+    <a href="/clientes/<%= clienteId %>/articulos/nuevo" class="btn btn-primary"><%- icons.plus %> Nuevo artículo</a>
+  </div>
 </div>
 <p class="page-hint">Catálogo que usa el bot para responder consultas y armar pedidos. Los artículos marcados <strong>"sin control"</strong> están siempre disponibles y no descuentan Stock al vender.</p>
 
@@ -62,5 +65,126 @@
     <%- include('partials/pagination') %>
   <% } %>
 </div>
+
+<dialog id="importar-dialog" class="modal">
+  <div id="importar-paso-form">
+    <h3>Importación de Artículos</h3>
+    <p class="page-hint" style="margin: 0 0 1rem;">
+      Descargá el Excel modelo y respetá el formato de las columnas (no cambies los encabezados ni el orden). Al subirlo se crean los Artículos nuevos y se actualizan los que ya existan.
+    </p>
+    <a href="/plantillas/Modelo-Importacion-Articulos.xlsx" class="btn btn-outline" download><%- icons.save %> Descargar modelo</a>
+    <form id="importar-form" style="margin-top: 1.25rem;">
+      <label>Archivo (.xlsx)
+        <input type="file" name="archivo" id="importar-archivo" accept=".xlsx" required>
+      </label>
+      <p id="importar-error" class="alert alert-error" style="display: none;"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="cerrarImportar()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Subir</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="importar-paso-progreso" style="display: none;">
+    <h3>Importando...</h3>
+    <progress id="importar-progress" value="0" max="100" style="width: 100%;"></progress>
+    <p id="importar-progreso-texto" class="page-hint" style="margin: 0.75rem 0 0;"></p>
+  </div>
+
+  <div id="importar-paso-resultado" style="display: none;">
+    <h3 id="importar-resultado-titulo"></h3>
+    <p id="importar-resultado-texto" class="page-hint" style="margin: 0 0 1rem;"></p>
+    <a id="importar-descargar-errores" class="btn btn-outline" style="display: none;" download><%- icons.save %> Descargar Excel de errores</a>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary" onclick="cerrarImportarYRecargar()">Cerrar</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+  const CLIENTE_ID = <%= clienteId %>;
+
+  function abrirImportar() {
+    document.getElementById('importar-paso-form').style.display = '';
+    document.getElementById('importar-paso-progreso').style.display = 'none';
+    document.getElementById('importar-paso-resultado').style.display = 'none';
+    document.getElementById('importar-error').style.display = 'none';
+    document.getElementById('importar-form').reset();
+    document.getElementById('importar-dialog').showModal();
+  }
+
+  function cerrarImportar() {
+    document.getElementById('importar-dialog').close();
+  }
+
+  function cerrarImportarYRecargar() {
+    document.getElementById('importar-dialog').close();
+    location.reload();
+  }
+
+  document.getElementById('importar-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const archivo = document.getElementById('importar-archivo').files[0];
+    if (!archivo) return;
+
+    const errorEl = document.getElementById('importar-error');
+    errorEl.style.display = 'none';
+
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+
+    let resp, data;
+    try {
+      resp = await fetch(`/clientes/${CLIENTE_ID}/articulos/importar`, { method: 'POST', body: formData });
+      data = await resp.json();
+    } catch (err) {
+      errorEl.textContent = 'No se pudo conectar con el servidor.';
+      errorEl.style.display = '';
+      return;
+    }
+
+    if (!resp.ok) {
+      errorEl.textContent = data.error || 'Ocurrió un error al subir el archivo.';
+      errorEl.style.display = '';
+      return;
+    }
+
+    document.getElementById('importar-paso-form').style.display = 'none';
+    document.getElementById('importar-paso-progreso').style.display = '';
+    pollEstadoImportacion(data.jobId);
+  });
+
+  async function pollEstadoImportacion(jobId) {
+    const resp = await fetch(`/clientes/${CLIENTE_ID}/articulos/importar/${jobId}/estado`);
+    const estado = await resp.json();
+
+    const pct = estado.total ? Math.round((estado.procesado / estado.total) * 100) : 100;
+    document.getElementById('importar-progress').value = pct;
+    document.getElementById('importar-progreso-texto').textContent = `${estado.procesado} de ${estado.total} Artículos procesados`;
+
+    if (!estado.terminado) {
+      setTimeout(() => pollEstadoImportacion(jobId), 700);
+      return;
+    }
+
+    document.getElementById('importar-paso-progreso').style.display = 'none';
+    document.getElementById('importar-paso-resultado').style.display = '';
+
+    const titulo = document.getElementById('importar-resultado-titulo');
+    const texto = document.getElementById('importar-resultado-texto');
+    const descargar = document.getElementById('importar-descargar-errores');
+
+    if (estado.erroresCount === 0) {
+      titulo.textContent = 'Importación exitosa';
+      texto.textContent = `Se importaron ${estado.exitosos} Artículos correctamente.`;
+      descargar.style.display = 'none';
+    } else {
+      titulo.textContent = 'Importación con errores';
+      texto.textContent = `${estado.erroresCount} de ${estado.total} Artículos tuvieron un error al importarse. Verificá el Excel para ver los detalles.`;
+      descargar.href = `/clientes/${CLIENTE_ID}/articulos/importar/${jobId}/errores.xlsx`;
+      descargar.style.display = '';
+    }
+  }
+</script>
 
 <%- include('partials/footer') %>

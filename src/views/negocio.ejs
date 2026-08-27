@@ -1,0 +1,15 @@
+<%- include('partials/header') %>
+
+<div class="topbar"><h1>Mi Negocio</h1></div>
+<p class="page-hint">Esto lo lee el bot antes de cada respuesta, además de sus instrucciones generales — contale cómo es tu negocio, tus horarios, políticas, o cómo te gustaría que hable. Los cambios se aplican al toque, no hace falta nada más.</p>
+
+<div class="card" style="padding: 1.75rem;">
+  <form method="POST" action="/clientes/<%= clienteId %>/negocio">
+    <label>Información de tu negocio
+      <textarea name="contextoNegocio" rows="16" placeholder="Ej: Somos una tienda de electrónica en Buenos Aires. Atendemos de lunes a viernes de 9 a 18hs. Los envíos tardan entre 2 y 5 días hábiles. Preferimos un trato cercano e informal."><%= contexto %></textarea>
+    </label>
+    <button type="submit" class="btn btn-primary"><%- icons.save %> Guardar</button>
+  </form>
+</div>
+
+<%- include('partials/footer') %>

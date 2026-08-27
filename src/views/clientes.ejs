@@ -32,6 +32,7 @@
               <td class="col-center"><span class="badge <%= c.activo ? 'badge-activo' : 'badge-inactivo' %>"><%= c.activo ? 'Activo' : 'Inactivo' %></span></td>
               <td>
                 <div class="cell-actions">
+                  <a href="/clientes/<%= c.id %>/negocio" class="icon-btn" title="Mi Negocio"><%- icons.fileText %></a>
                   <a href="/clientes/<%= c.id %>/pedidos" class="icon-btn" title="Pedidos"><%- icons.truck %></a>
                   <a href="/clientes/<%= c.id %>/articulos" class="icon-btn" title="Artículos"><%- icons.package %></a>
                   <a href="/clientes/<%= c.id %>/mensajes" class="icon-btn" title="Mensajes"><%- icons.message %></a>

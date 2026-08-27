@@ -103,6 +103,27 @@ router.post('/clientes/:clienteId/activar', requireAdmin, async (req, res, next)
 
 // ── Datos de un Cliente puntual (el propio, o cualquiera si sos admin) ─────
 
+router.get('/clientes/:clienteId/negocio', resolveClienteAccess, async (req, res, next) => {
+  try {
+    const [cliente, contexto] = await Promise.all([
+      clientes.obtenerCliente(req.clienteId),
+      clientes.obtenerContexto(req.clienteId),
+    ]);
+    res.render('negocio', { usuario: req.session.usuario, cliente, clienteId: req.clienteId, contexto });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/clientes/:clienteId/negocio', resolveClienteAccess, async (req, res, next) => {
+  try {
+    await clientes.actualizarContexto(req.clienteId, req.body.contextoNegocio);
+    res.redirect(`/clientes/${req.clienteId}/negocio`);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/clientes/:clienteId/articulos', resolveClienteAccess, async (req, res, next) => {
   try {
     const [cliente, resultado] = await Promise.all([

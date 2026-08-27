@@ -88,6 +88,25 @@ async function actualizarCliente(id, { razonSocial, cuit, telefono, email, zonaH
     `);
 }
 
+// Texto libre que el propio Cliente escribe sobre su negocio (horarios, políticas,
+// cómo quiere que hable el bot, etc.) — claudeService.buildSystemPrompt() en
+// Bot_Mensajeria lo suma a las instrucciones generales antes de cada respuesta, así
+// que el cambio se aplica al toque, sin redeploy.
+async function obtenerContexto(id) {
+  const pool = await getPool();
+  const result = await pool.request().input('id', sql.Int, id).query('SELECT contextoNegocio FROM Clientes WHERE id = @id');
+  return result.recordset[0]?.contextoNegocio ?? '';
+}
+
+async function actualizarContexto(id, contextoNegocio) {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input('id', sql.Int, id)
+    .input('contextoNegocio', sql.NVarChar(sql.MAX), contextoNegocio || null)
+    .query('UPDATE Clientes SET contextoNegocio = @contextoNegocio WHERE id = @id');
+}
+
 // No borramos de verdad: desactivar preserva el historial (Mensajes, Pedidos,
 // Escalamientos) y ya corta el acceso del bot y del portal, porque ambos
 // filtran por Clientes.activo = 1.
@@ -107,6 +126,8 @@ module.exports = {
   obtenerCliente,
   crearCliente,
   actualizarCliente,
+  obtenerContexto,
+  actualizarContexto,
   desactivarCliente,
   activarCliente,
 };

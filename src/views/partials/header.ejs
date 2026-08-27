@@ -25,6 +25,9 @@
       <% if (typeof cliente !== 'undefined' && cliente) { %>
         <div class="sidebar-section">Viendo: <%= cliente.razonSocial %></div>
         <nav class="sidebar-nav">
+          <a href="/clientes/<%= clienteId %>/negocio" class="<%= currentPath.endsWith('/negocio') ? 'active' : '' %>">
+            <%- icons.fileText %><span class="label">Mi Negocio</span>
+          </a>
           <a href="/clientes/<%= clienteId %>/pedidos" class="<%= currentPath.includes('/pedidos') ? 'active' : '' %>">
             <%- icons.truck %><span class="label">Pedidos</span>
           </a>
@@ -45,6 +48,9 @@
     <% } else { %>
       <div class="sidebar-section">Tu cuenta</div>
       <nav class="sidebar-nav">
+        <a href="/clientes/<%= usuario.clienteId %>/negocio" class="<%= currentPath.endsWith('/negocio') ? 'active' : '' %>">
+          <%- icons.fileText %><span class="label">Mi Negocio</span>
+        </a>
         <a href="/clientes/<%= usuario.clienteId %>/pedidos" class="<%= currentPath.includes('/pedidos') ? 'active' : '' %>">
           <%- icons.truck %><span class="label">Pedidos</span>
         </a>

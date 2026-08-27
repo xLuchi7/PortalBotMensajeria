@@ -216,18 +216,17 @@ async function generarExcelErrores(jobId, clienteId) {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Errores');
   ws.columns = [
-    { header: 'Nombre', key: 'nombre', width: 24 },
-    { header: 'Codigo', key: 'codigo', width: 14 },
-    { header: 'Descripcion', key: 'descripcion', width: 34 },
-    { header: 'Precio', key: 'precio', width: 14 },
-    { header: 'Usa Control de Stock', key: 'usaStock', width: 20 },
-    { header: 'Stock', key: 'stock', width: 12 },
-    { header: 'Error', key: 'error', width: 42 },
+    { header: 'Nombre', key: 'nombre', width: 18 },
+    { header: 'Codigo', key: 'codigo', width: 18 },
+    { header: 'Descripcion', key: 'descripcion', width: 18 },
+    { header: 'Precio', key: 'precio', width: 18 },
+    { header: 'Usa Control de Stock', key: 'usaStock', width: 18 },
+    { header: 'Stock', key: 'stock', width: 18 },
+    { header: 'Error', key: 'error', width: 18 },
   ];
-  ws.getRow(1).font = { bold: true };
 
-  for (const { datos, error } of job.errores) {
-    ws.addRow({
+  ws.addRows(
+    job.errores.map(({ datos, error }) => ({
       nombre: datos.nombre ?? '',
       codigo: datos.codigo ?? '',
       descripcion: datos.descripcion ?? '',
@@ -235,8 +234,43 @@ async function generarExcelErrores(jobId, clienteId) {
       usaStock: datos.usaStockTexto ?? '',
       stock: datos.stock ?? '',
       error,
+    }))
+  );
+
+  // Mismo estilo que usan en el resto de las herramientas del negocio: encabezado
+  // azul en negrita, todas las celdas con borde fino, filas pares con banda gris,
+  // ancho de columna según el contenido más largo, filtro y encabezado congelado.
+  ws.columns.forEach(column => {
+    let maxLength = 0;
+    column.eachCell({ includeEmpty: true }, cell => {
+      const cellValue = cell.value != null ? cell.value.toString() : '';
+      maxLength = Math.max(maxLength, cellValue.length);
     });
-  }
+    column.width = maxLength + 6;
+  });
+
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columnCount } };
+
+  ws.getRow(1).eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2F75B5' } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+  });
+
+  ws.eachRow((row, rowNumber) => {
+    row.eachCell(cell => {
+      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+    });
+    if (rowNumber > 1 && rowNumber % 2 === 0) {
+      row.eachCell(cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+      });
+    }
+  });
+
+  ws.getColumn('precio').numFmt = '"$"#,##0.00';
+  ws.views = [{ state: 'frozen', ySplit: 1 }];
 
   return wb.xlsx.writeBuffer();
 }

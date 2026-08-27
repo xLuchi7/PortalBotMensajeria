@@ -72,10 +72,10 @@
     <p class="page-hint" style="margin: 0 0 1rem;">
       Descargá el Excel modelo y respetá el formato de las columnas (no cambies los encabezados ni el orden). Al subirlo se crean los Artículos nuevos y se actualizan los que ya existan.
     </p>
-    <a href="/plantillas/Modelo-Importacion-Articulos.xlsx" class="btn btn-outline" download><%- icons.save %> Descargar modelo</a>
+    <a href="/plantillas/Modelo-Importacion-Articulos.xlsx" class="btn btn-outline btn-file-action" download><%- icons.save %> Descargar modelo</a>
     <form id="importar-form" style="margin-top: 1.25rem;">
       <div class="file-input-row">
-        <button type="button" class="btn btn-outline" onclick="document.getElementById('importar-archivo').click()"><%- icons.upload %> Elegir archivo</button>
+        <button type="button" class="btn btn-outline btn-file-action" onclick="document.getElementById('importar-archivo').click()"><%- icons.upload %> Elegir archivo</button>
         <input type="file" name="archivo" id="importar-archivo" accept=".xlsx" required class="file-input-hidden">
       </div>
       <p id="importar-archivo-nombre" class="field-hint" style="margin: 0.5rem 0 1.1rem;">Ningún archivo seleccionado</p>

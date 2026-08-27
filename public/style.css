@@ -590,7 +590,13 @@ input:focus, select:focus, textarea:focus {
 /* ── Responsive ─────────────────────────────────────────────────────── */
 
 @media (max-width: 760px) {
-  .app-shell { grid-template-columns: 1fr; }
+  /* En una sola columna, sidebar y main pasan a ser dos filas -- sin fijar sus
+     alturas, Grid reparte el alto sobrante de min-height: 100vh entre ambas
+     filas "auto" por igual, así que una página con poco contenido (ej: pocos
+     Clientes) infla la barra del sidebar en vez de dejarla del alto de su
+     contenido. auto 1fr deja la fila del sidebar fija a su contenido y que
+     sea main la que absorba el resto. */
+  .app-shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .sidebar {
     flex-direction: row;
     align-items: center;

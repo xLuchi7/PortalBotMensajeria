@@ -34,6 +34,7 @@ body {
   color: var(--text);
   font-size: 15px;
   line-height: 1.5;
+  overflow-x: hidden;
 }
 
 a { color: var(--primary); text-decoration: none; }
@@ -134,6 +135,10 @@ a:hover { color: var(--primary-dark); }
   padding: 2rem 3rem 3rem;
   max-width: 1520px;
   width: 100%;
+  /* Sin esto, un grid item no se achica por debajo del ancho mínimo de su
+     contenido (ej: una tabla ancha) -- empuja todo el layout más ancho que la
+     pantalla y el overflow-x: auto de .table-wrap nunca llega a activarse. */
+  min-width: 0;
 }
 
 .topbar {

@@ -74,9 +74,12 @@
     </p>
     <a href="/plantillas/Modelo-Importacion-Articulos.xlsx" class="btn btn-outline" download><%- icons.save %> Descargar modelo</a>
     <form id="importar-form" style="margin-top: 1.25rem;">
-      <label>Archivo (.xlsx)
-        <input type="file" name="archivo" id="importar-archivo" accept=".xlsx" required>
-      </label>
+      <label>Archivo (.xlsx)</label>
+      <div class="file-input-row">
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('importar-archivo').click()"><%- icons.upload %> Elegir archivo</button>
+        <input type="file" name="archivo" id="importar-archivo" accept=".xlsx" required class="file-input-hidden">
+      </div>
+      <p id="importar-archivo-nombre" class="field-hint" style="margin: 0.5rem 0 1.1rem;">Ningún archivo seleccionado</p>
       <p id="importar-error" class="alert alert-error" style="display: none;"></p>
       <div class="modal-actions">
         <button type="button" class="btn btn-outline" onclick="cerrarImportar()">Cancelar</button>
@@ -92,10 +95,14 @@
   </div>
 
   <div id="importar-paso-resultado" style="display: none;">
-    <h3 id="importar-resultado-titulo"></h3>
-    <p id="importar-resultado-texto" class="page-hint" style="margin: 0 0 1rem;"></p>
-    <a id="importar-descargar-errores" class="btn btn-outline" style="display: none;" download><%- icons.save %> Descargar Excel de errores</a>
+    <div class="modal-result">
+      <div id="importar-icono-exito" class="modal-result-icon success" style="display: none;"><%- icons.check %></div>
+      <div id="importar-icono-error" class="modal-result-icon error" style="display: none;"><%- icons.alertTriangle %></div>
+      <h3 id="importar-resultado-titulo"></h3>
+      <p id="importar-resultado-texto" class="page-hint" style="margin: 0;"></p>
+    </div>
     <div class="modal-actions">
+      <a id="importar-descargar-errores" class="btn btn-outline" style="display: none;" download><%- icons.save %> Descargar Excel de errores</a>
       <button type="button" class="btn btn-primary" onclick="cerrarImportarYRecargar()">Cerrar</button>
     </div>
   </div>
@@ -109,6 +116,7 @@
     document.getElementById('importar-paso-progreso').style.display = 'none';
     document.getElementById('importar-paso-resultado').style.display = 'none';
     document.getElementById('importar-error').style.display = 'none';
+    document.getElementById('importar-archivo-nombre').textContent = 'Ningún archivo seleccionado';
     document.getElementById('importar-form').reset();
     document.getElementById('importar-dialog').showModal();
   }
@@ -121,6 +129,11 @@
     document.getElementById('importar-dialog').close();
     location.reload();
   }
+
+  document.getElementById('importar-archivo').addEventListener('change', (e) => {
+    const archivo = e.target.files[0];
+    document.getElementById('importar-archivo-nombre').textContent = archivo ? archivo.name : 'Ningún archivo seleccionado';
+  });
 
   document.getElementById('importar-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -173,12 +186,18 @@
     const titulo = document.getElementById('importar-resultado-titulo');
     const texto = document.getElementById('importar-resultado-texto');
     const descargar = document.getElementById('importar-descargar-errores');
+    const iconoExito = document.getElementById('importar-icono-exito');
+    const iconoError = document.getElementById('importar-icono-error');
 
     if (estado.erroresCount === 0) {
+      iconoExito.style.display = '';
+      iconoError.style.display = 'none';
       titulo.textContent = 'Importación exitosa';
       texto.textContent = `Se importaron ${estado.exitosos} Artículos correctamente.`;
       descargar.style.display = 'none';
     } else {
+      iconoExito.style.display = 'none';
+      iconoError.style.display = '';
       titulo.textContent = 'Importación con errores';
       texto.textContent = `${estado.erroresCount} de ${estado.total} Artículos tuvieron un error al importarse. Verificá el Excel para ver los detalles.`;
       descargar.href = `/clientes/${CLIENTE_ID}/articulos/importar/${jobId}/errores.xlsx`;

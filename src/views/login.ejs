@@ -9,8 +9,12 @@
 </head>
 <body>
 <div class="login-shell">
+  <div class="login-glow login-glow-1"></div>
+  <div class="login-glow login-glow-2"></div>
   <div class="login-card">
-    <div class="login-brand"><%- icons.bot %> Portal de Clientes</div>
+    <div class="login-badge"><%- icons.bot %></div>
+    <h1 class="login-title">Portal de Clientes</h1>
+    <p class="login-subtitle">Ingresá para gestionar tu negocio</p>
 
     <% if (error) { %>
       <div class="alert alert-error"><%= error %></div>
@@ -19,11 +23,17 @@
     <form method="POST" action="/login">
       <label>
         Email
-        <input type="email" name="email" required autofocus>
+        <div class="input-icon-wrap">
+          <span class="input-icon"><%- icons.mail %></span>
+          <input type="email" name="email" required autofocus>
+        </div>
       </label>
       <label>
         Contraseña
-        <input type="password" name="password" required>
+        <div class="input-icon-wrap">
+          <span class="input-icon"><%- icons.lock %></span>
+          <input type="password" name="password" required>
+        </div>
       </label>
       <button type="submit" class="btn btn-primary">Ingresar</button>
     </form>

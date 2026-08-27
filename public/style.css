@@ -458,26 +458,60 @@ input:focus, select:focus, textarea:focus {
   justify-content: center;
   background: radial-gradient(circle at top left, #1f2350 0%, #14172b 45%, #0c0e1c 100%);
   padding: 1.5rem;
+  position: relative;
+  overflow: hidden;
 }
 
+.login-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.4;
+  pointer-events: none;
+}
+.login-glow-1 { width: 420px; height: 420px; background: var(--primary); top: -140px; left: -120px; }
+.login-glow-2 { width: 360px; height: 360px; background: #7c3aed; bottom: -160px; right: -100px; }
+
 .login-card {
+  position: relative;
   width: 100%;
   max-width: 380px;
   background: #fff;
-  border-radius: 14px;
+  border-radius: 16px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
-  padding: 2.25rem 2rem;
+  padding: 2.5rem 2rem 2.25rem;
+  text-align: center;
 }
 
-.login-brand {
+.login-badge {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #5c52ec, var(--primary));
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  font-weight: 700;
-  font-size: 1.1rem;
-  margin-bottom: 1.5rem;
+  justify-content: center;
+  margin: 0 auto 1.1rem;
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.35);
 }
-.login-brand .icon { width: 24px; height: 24px; color: var(--primary); }
+.login-badge .icon { width: 28px; height: 28px; color: #fff; }
+
+.login-title { font-size: 1.25rem; font-weight: 700; margin: 0 0 0.3rem; }
+.login-subtitle { font-size: 0.88rem; color: var(--text-muted); margin: 0 0 1.75rem; }
+
+.login-card form { text-align: left; }
+
+.input-icon-wrap { position: relative; margin-top: 0.4rem; }
+.input-icon-wrap input { padding-left: 2.5rem; margin-top: 0; }
+.input-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  display: flex;
+}
+.input-icon .icon { width: 17px; height: 17px; }
 
 .login-card button { width: 100%; justify-content: center; margin-top: 0.3rem; }
 

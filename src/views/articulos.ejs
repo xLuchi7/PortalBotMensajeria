@@ -3,7 +3,7 @@
 <div class="topbar">
   <h1>Artículos</h1>
   <div class="cell-actions">
-    <button type="button" class="btn btn-outline" onclick="abrirImportar()"><%- icons.upload %> Importar Excel</button>
+    <button type="button" class="btn btn-accent" onclick="abrirImportar()"><%- icons.upload %> Importar Excel</button>
     <a href="/clientes/<%= clienteId %>/articulos/nuevo" class="btn btn-primary"><%- icons.plus %> Nuevo artículo</a>
   </div>
 </div>
@@ -74,7 +74,6 @@
     </p>
     <a href="/plantillas/Modelo-Importacion-Articulos.xlsx" class="btn btn-outline" download><%- icons.save %> Descargar modelo</a>
     <form id="importar-form" style="margin-top: 1.25rem;">
-      <label>Archivo (.xlsx)</label>
       <div class="file-input-row">
         <button type="button" class="btn btn-outline" onclick="document.getElementById('importar-archivo').click()"><%- icons.upload %> Elegir archivo</button>
         <input type="file" name="archivo" id="importar-archivo" accept=".xlsx" required class="file-input-hidden">

@@ -308,6 +308,9 @@ tbody tr.row-inactive { opacity: 0.55; }
   opacity: 0.4;
 }
 
+.btn-accent { background: var(--primary-soft); border-color: transparent; color: var(--primary); }
+.btn-accent:hover { background: #e0ddfd; transform: translateY(-1px); }
+
 .btn-danger-outline { background: #f1f2f7; border-color: transparent; color: var(--danger); }
 .btn-danger-outline:hover { background: var(--danger-soft); transform: translateY(-1px); }
 

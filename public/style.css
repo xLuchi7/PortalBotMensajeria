@@ -386,6 +386,34 @@ input:focus, select:focus, textarea:focus {
 
 .field-hint { font-weight: 400; color: var(--text-muted); }
 
+/* ── Mi Negocio ─────────────────────────────────────────────────────── */
+
+.negocio-layout {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 1.5rem;
+  align-items: start;
+}
+.negocio-tips { padding: 1.5rem; }
+.negocio-tips-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+.negocio-tips-header .icon { color: var(--primary); }
+.negocio-tips ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.9;
+}
+@media (max-width: 900px) {
+  .negocio-layout { grid-template-columns: 1fr; }
+}
+
 /* ── Pagination ─────────────────────────────────────────────────────── */
 
 .pagination {

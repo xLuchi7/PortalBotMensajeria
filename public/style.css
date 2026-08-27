@@ -606,7 +606,7 @@ input:focus, select:focus, textarea:focus {
   .sidebar-section { display: none; }
   .sidebar-nav { flex-direction: row; }
   .sidebar-nav a span.label { display: none; }
-  .sidebar-footer { margin-top: 0; margin-left: auto; display: flex; align-items: center; border-top: none; }
+  .sidebar-footer { margin-top: 0; margin-left: auto; padding-top: 0; display: flex; align-items: center; border-top: none; }
   .sidebar-user { display: none; }
   .main { padding: 1.5rem 1.1rem 2.5rem; }
 }

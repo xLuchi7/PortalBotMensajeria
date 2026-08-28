@@ -43,7 +43,7 @@ router.post('/clientes/nuevo', requireAdmin, async (req, res, next) => {
   try {
     const { razonSocial, cuit, telefono, email, zonaHoraria } = req.body;
     await clientes.crearCliente({ razonSocial, cuit, telefono, email, zonaHoraria });
-    setFlash(req, 'success', 'Cliente creado correctamente.');
+    setFlash(req, 'success', 'Cliente Creado Correctamente');
     res.redirect('/clientes');
   } catch (err) {
     if (err.number === 2627 || err.number === 2601) {
@@ -71,7 +71,7 @@ router.post('/clientes/:clienteId/editar', requireAdmin, async (req, res, next) 
   try {
     const { razonSocial, cuit, telefono, email, zonaHoraria } = req.body;
     await clientes.actualizarCliente(req.params.clienteId, { razonSocial, cuit, telefono, email, zonaHoraria });
-    setFlash(req, 'success', 'Cliente actualizado correctamente.');
+    setFlash(req, 'success', 'Cliente Actualizado Correctamente');
     res.redirect('/clientes');
   } catch (err) {
     if (err.number === 2627 || err.number === 2601) {
@@ -89,7 +89,7 @@ router.post('/clientes/:clienteId/editar', requireAdmin, async (req, res, next) 
 router.post('/clientes/:clienteId/borrar', requireAdmin, async (req, res, next) => {
   try {
     await clientes.desactivarCliente(req.params.clienteId);
-    setFlash(req, 'success', 'Cliente desactivado.');
+    setFlash(req, 'success', 'Cliente Desactivado');
     res.redirect('/clientes');
   } catch (err) {
     next(err);
@@ -99,7 +99,7 @@ router.post('/clientes/:clienteId/borrar', requireAdmin, async (req, res, next) 
 router.post('/clientes/:clienteId/activar', requireAdmin, async (req, res, next) => {
   try {
     await clientes.activarCliente(req.params.clienteId);
-    setFlash(req, 'success', 'Cliente reactivado.');
+    setFlash(req, 'success', 'Cliente Reactivado');
     res.redirect('/clientes');
   } catch (err) {
     next(err);
@@ -123,7 +123,7 @@ router.get('/clientes/:clienteId/negocio', resolveClienteAccess, async (req, res
 router.post('/clientes/:clienteId/negocio', resolveClienteAccess, async (req, res, next) => {
   try {
     await clientes.actualizarContexto(req.clienteId, req.body.contextoNegocio);
-    setFlash(req, 'success', 'Información guardada.');
+    setFlash(req, 'success', 'Información Guardada');
     res.redirect(`/clientes/${req.clienteId}/negocio`);
   } catch (err) {
     next(err);
@@ -150,7 +150,7 @@ router.post('/clientes/:clienteId/articulos/nuevo', resolveClienteAccess, async 
   try {
     const { codigo, nombre, descripcion, precio, cantidadInicial, usaStock } = req.body;
     await articulos.crearArticulo(req.clienteId, { codigo, nombre, descripcion, precio, cantidadInicial, usaStock: !!usaStock });
-    setFlash(req, 'success', 'Artículo creado correctamente.');
+    setFlash(req, 'success', 'Artículo Creado Correctamente');
     res.redirect(`/clientes/${req.clienteId}/articulos`);
   } catch (err) {
     next(err);
@@ -171,7 +171,7 @@ router.post('/clientes/:clienteId/articulos/:id/editar', resolveClienteAccess, a
   try {
     const { codigo, nombre, descripcion, precio, usaStock } = req.body;
     await articulos.actualizarArticulo(req.params.id, req.clienteId, { codigo, nombre, descripcion, precio, usaStock: !!usaStock });
-    setFlash(req, 'success', 'Artículo actualizado correctamente.');
+    setFlash(req, 'success', 'Artículo Actualizado Correctamente');
     res.redirect(`/clientes/${req.clienteId}/articulos`);
   } catch (err) {
     next(err);
@@ -181,7 +181,7 @@ router.post('/clientes/:clienteId/articulos/:id/editar', resolveClienteAccess, a
 router.post('/clientes/:clienteId/articulos/:id/stock', resolveClienteAccess, async (req, res, next) => {
   try {
     await articulos.actualizarStock(req.params.id, req.clienteId, req.body.cantidad);
-    setFlash(req, 'success', 'Stock actualizado.');
+    setFlash(req, 'success', 'Stock Actualizado');
     res.redirect(`/clientes/${req.clienteId}/articulos`);
   } catch (err) {
     next(err);
@@ -191,7 +191,7 @@ router.post('/clientes/:clienteId/articulos/:id/stock', resolveClienteAccess, as
 router.post('/clientes/:clienteId/articulos/:id/borrar', resolveClienteAccess, async (req, res, next) => {
   try {
     await articulos.desactivarArticulo(req.params.id, req.clienteId);
-    setFlash(req, 'success', 'Artículo desactivado.');
+    setFlash(req, 'success', 'Artículo Desactivado');
     res.redirect(`/clientes/${req.clienteId}/articulos`);
   } catch (err) {
     next(err);
@@ -201,7 +201,7 @@ router.post('/clientes/:clienteId/articulos/:id/borrar', resolveClienteAccess, a
 router.post('/clientes/:clienteId/articulos/:id/activar', resolveClienteAccess, async (req, res, next) => {
   try {
     await articulos.activarArticulo(req.params.id, req.clienteId);
-    setFlash(req, 'success', 'Artículo reactivado.');
+    setFlash(req, 'success', 'Artículo Reactivado');
     res.redirect(`/clientes/${req.clienteId}/articulos`);
   } catch (err) {
     next(err);
@@ -265,12 +265,12 @@ router.get('/clientes/:clienteId/escalamientos', resolveClienteAccess, async (re
 router.post('/clientes/:clienteId/escalamientos/:id/estado', resolveClienteAccess, async (req, res, next) => {
   try {
     await escalamientos.actualizarEstado(req.params.id, req.clienteId, req.body.estado);
-    setFlash(req, 'success', 'Estado actualizado.');
+    setFlash(req, 'success', 'Estado Actualizado');
     res.redirect(`/clientes/${req.clienteId}/escalamientos`);
   } catch (err) {
     if (err instanceof escalamientos.EstadoFinalError) {
       console.warn(`[escalamientos] Intento de modificar un escalamiento ya resuelto (id=${req.params.id})`);
-      setFlash(req, 'warning', 'Este Escalamiento ya está resuelto y no se puede modificar.');
+      setFlash(req, 'warning', 'Escalamiento Ya Resuelto');
       return res.redirect(`/clientes/${req.clienteId}/escalamientos`);
     }
     next(err);
@@ -301,7 +301,7 @@ router.get('/clientes/:clienteId/pedidos/:id/detalle.json', resolveClienteAccess
 router.post('/clientes/:clienteId/pedidos/:id/notas', resolveClienteAccess, async (req, res, next) => {
   try {
     await pedidos.actualizarNotas(req.params.id, req.clienteId, req.body.notas);
-    setFlash(req, 'success', 'Notas guardadas.');
+    setFlash(req, 'success', 'Notas Guardadas');
     res.redirect(`/clientes/${req.clienteId}/pedidos`);
   } catch (err) {
     next(err);
@@ -323,16 +323,16 @@ router.get('/clientes/:clienteId/consultas', resolveClienteAccess, async (req, r
 router.post('/clientes/:clienteId/pedidos/:id/estado', resolveClienteAccess, async (req, res, next) => {
   try {
     await pedidos.actualizarEstado(req.params.id, req.clienteId, req.body.estado);
-    setFlash(req, 'success', 'Estado actualizado.');
+    setFlash(req, 'success', 'Estado Actualizado');
     res.redirect(`/clientes/${req.clienteId}/pedidos`);
   } catch (err) {
     if (err instanceof pedidos.EstadoFinalError) {
       console.warn(`[pedidos] Intento de modificar un pedido ya finalizado (id=${req.params.id})`);
-      setFlash(req, 'warning', 'Este Pedido ya está en un estado final y no se puede modificar.');
+      setFlash(req, 'warning', 'Pedido en Estado Final');
       return res.redirect(`/clientes/${req.clienteId}/pedidos`);
     }
     if (err.message === 'Un pedido reclamado solo puede pasar a Solucionado.') {
-      setFlash(req, 'warning', err.message);
+      setFlash(req, 'warning', 'Reclamado Solo Puede Pasar a Solucionado');
       return res.redirect(`/clientes/${req.clienteId}/pedidos`);
     }
     next(err);

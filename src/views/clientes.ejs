@@ -40,9 +40,9 @@
                   <a href="/clientes/<%= c.id %>/escalamientos" class="icon-btn" title="Escalamientos"><%- icons.alertTriangle %></a>
                   <a href="/clientes/<%= c.id %>/editar" class="icon-btn" title="Editar"><%- icons.edit %></a>
                   <% if (c.activo) { %>
-                    <form method="POST" action="/clientes/<%= c.id %>/borrar" class="inline"
-                          onsubmit="return confirm('¿Desactivar a <%= c.razonSocial %>? Deja de poder usar el bot y el portal, pero no se borra su historial.');">
-                      <button type="submit" class="icon-btn danger" title="Desactivar"><%- icons.trash %></button>
+                    <form method="POST" action="/clientes/<%= c.id %>/borrar" class="inline">
+                      <button type="button" class="icon-btn danger" title="Desactivar"
+                              onclick="confirmarEliminar('¿Desactivar a «<%= c.razonSocial %>»? Deja de poder usar el bot y el portal, pero no se borra su historial.', this.closest('form'))"><%- icons.trash %></button>
                     </form>
                   <% } else { %>
                     <form method="POST" action="/clientes/<%= c.id %>/activar" class="inline">

@@ -25,7 +25,7 @@
     </label>
     <label>
       Precio
-      <input type="number" name="precio" step="0.01" min="0" value="<%= editar && editar.precio != null ? editar.precio : '' %>">
+      <input type="number" name="precio" step="0.01" min="0" value="<%= editar && editar.precio != null ? editar.precio : '' %>" required>
     </label>
     <% const usaStockActual = editar ? editar.usaStock : true; %>
     <label style="display: flex; align-items: center; gap: 0.5rem;">

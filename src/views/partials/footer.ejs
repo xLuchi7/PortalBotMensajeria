@@ -2,6 +2,28 @@
 </div>
 <div class="toast-container" id="toast-container"></div>
 
+<dialog id="confirm-dialog" class="modal">
+  <h3>¿Eliminar?</h3>
+  <p class="page-hint" id="confirm-dialog-texto" style="margin: 0 0 1.25rem;"></p>
+  <div class="modal-actions">
+    <button type="button" class="btn btn-outline" onclick="document.getElementById('confirm-dialog').close()">Cancelar</button>
+    <button type="button" class="btn btn-danger-outline" id="confirm-dialog-btn">Eliminar</button>
+  </div>
+</dialog>
+
+<script>
+  let _confirmForm = null;
+  function confirmarEliminar(mensaje, form) {
+    _confirmForm = form;
+    document.getElementById('confirm-dialog-texto').textContent = mensaje;
+    document.getElementById('confirm-dialog').showModal();
+  }
+  document.getElementById('confirm-dialog-btn').addEventListener('click', () => {
+    document.getElementById('confirm-dialog').close();
+    if (_confirmForm) _confirmForm.submit();
+  });
+</script>
+
 <script>
   const ICON_TOAST_CHECK = `<%- icons.check %>`;
   const ICON_TOAST_WARN = `<%- icons.alertTriangle %>`;
@@ -46,7 +68,7 @@
 
       const invalido = form.querySelector(':invalid');
       if (!invalido) {
-        mostrarToast('warning', 'Revisá los campos del formulario.');
+        mostrarToast('warning', 'Revisá los Campos del Formulario');
         return;
       }
 
@@ -55,11 +77,11 @@
       invalido.focus();
 
       const label = invalido.closest('label');
-      let campo = 'un campo obligatorio';
+      let campo = 'un Campo Obligatorio';
       if (label && label.childNodes[0] && label.childNodes[0].nodeType === Node.TEXT_NODE) {
         campo = label.childNodes[0].textContent.trim();
       }
-      mostrarToast('warning', `Falta completar "${campo}".`);
+      mostrarToast('warning', `Falta Completar "${campo}"`);
     });
   });
 </script>

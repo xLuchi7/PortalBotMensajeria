@@ -477,15 +477,16 @@ input:focus, select:focus, textarea:focus {
   gap: 0.7rem;
   padding: 0.9rem 2.2rem 0.95rem 0.9rem;
   border-radius: 12px;
-  background: var(--card);
-  box-shadow: 0 16px 40px rgba(20, 23, 43, 0.18), 0 2px 8px rgba(20, 23, 43, 0.08);
-  border: 1px solid var(--border);
+  box-shadow: 0 16px 40px rgba(20, 23, 43, 0.22), 0 2px 8px rgba(20, 23, 43, 0.1);
   min-width: 300px;
   max-width: 380px;
   overflow: hidden;
   pointer-events: auto;
   animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
+.toast-success { background: var(--success); }
+.toast-error { background: var(--danger); }
+.toast-warning { background: var(--warning); }
 .toast-icon {
   flex-shrink: 0;
   width: 30px;
@@ -494,12 +495,11 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   align-items: center;
   justify-content: center;
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
 }
 .toast-icon .icon { width: 16px; height: 16px; }
-.toast-success .toast-icon { background: var(--success-soft); color: var(--success); }
-.toast-error .toast-icon { background: var(--danger-soft); color: var(--danger); }
-.toast-warning .toast-icon { background: var(--warning-soft); color: var(--warning); }
-.toast-text { font-size: 0.87rem; font-weight: 500; line-height: 1.45; color: var(--text); padding-top: 0.2rem; }
+.toast-text { font-size: 0.87rem; font-weight: 600; line-height: 1.45; color: #fff; padding-top: 0.2rem; }
 .toast-close {
   position: absolute;
   top: 0.55rem;
@@ -511,25 +511,23 @@ input:focus, select:focus, textarea:focus {
   justify-content: center;
   border: none;
   background: none;
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.8);
   cursor: pointer;
   border-radius: 6px;
   padding: 0;
 }
 .toast-close .icon { width: 13px; height: 13px; }
-.toast-close:hover { background: #f1f2f7; color: var(--text); }
+.toast-close:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
 .toast-progress {
   position: absolute;
   bottom: 0;
   left: 0;
   height: 3px;
+  background: rgba(255, 255, 255, 0.55);
   width: 100%;
   transform-origin: left;
   animation: toast-progress 3.2s linear forwards;
 }
-.toast-success .toast-progress { background: var(--success); }
-.toast-error .toast-progress { background: var(--danger); }
-.toast-warning .toast-progress { background: var(--warning); }
 .toast.toast-hide { animation: toast-out 0.22s ease forwards; }
 @keyframes toast-in { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes toast-out { to { opacity: 0; transform: translateX(28px); } }

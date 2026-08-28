@@ -46,9 +46,9 @@
                 <div class="cell-actions">
                   <a href="/clientes/<%= clienteId %>/articulos/<%= a.id %>/editar" class="icon-btn" title="Editar"><%- icons.edit %></a>
                   <% if (a.activo) { %>
-                    <form method="POST" action="/clientes/<%= clienteId %>/articulos/<%= a.id %>/borrar" class="inline"
-                          onsubmit="return confirm('¿Desactivar \'<%= a.nombre %>\'? No aparecerá más para el bot ni en el catálogo, pero se conserva el historial.');">
-                      <button type="submit" class="icon-btn danger" title="Desactivar"><%- icons.trash %></button>
+                    <form method="POST" action="/clientes/<%= clienteId %>/articulos/<%= a.id %>/borrar" class="inline">
+                      <button type="button" class="icon-btn danger" title="Desactivar"
+                              onclick="confirmarEliminar('¿Desactivar «<%= a.nombre %>»? No aparecerá más para el bot ni en el catálogo, pero se conserva el historial.', this.closest('form'))"><%- icons.trash %></button>
                     </form>
                   <% } else { %>
                     <form method="POST" action="/clientes/<%= clienteId %>/articulos/<%= a.id %>/activar" class="inline">

@@ -29,9 +29,9 @@
               <td>
                 <div class="cell-actions">
                   <a href="/usuarios/<%= u.id %>/editar" class="icon-btn" title="Editar"><%- icons.edit %></a>
-                  <form method="POST" action="/usuarios/<%= u.id %>/borrar" class="inline"
-                        onsubmit="return confirm('¿Borrar el usuario <%= u.email %>? No se puede deshacer.');">
-                    <button type="submit" class="icon-btn danger" title="Borrar"><%- icons.trash %></button>
+                  <form method="POST" action="/usuarios/<%= u.id %>/borrar" class="inline">
+                    <button type="button" class="icon-btn danger" title="Borrar"
+                            onclick="confirmarEliminar('¿Borrar el usuario «<%= u.email %>»? No se puede deshacer.', this.closest('form'))"><%- icons.trash %></button>
                   </form>
                 </div>
               </td>

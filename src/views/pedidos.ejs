@@ -83,7 +83,7 @@
   <div class="table-wrap" style="margin-bottom: 1.1rem;">
     <table>
       <thead>
-        <tr><th>Artículo</th><th class="col-center">Cantidad</th><th>Precio unitario</th><th>Subtotal</th></tr>
+        <tr><th>Artículo</th><th class="col-center">Cantidad</th><th>Precio unitario</th><th>Subtotal</th><th>Total</th></tr>
       </thead>
       <tbody id="detalle-items"></tbody>
     </table>
@@ -109,23 +109,28 @@
   function abrirDetalle(pedidoId) {
     document.getElementById('detalle-dialog-pedido').textContent = pedidoId;
     const tbody = document.getElementById('detalle-items');
-    tbody.innerHTML = '<tr><td colspan="4">Cargando…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5">Cargando…</td></tr>';
     document.getElementById('detalle-dialog').showModal();
 
     fetch(`/clientes/${CLIENTE_ID}/pedidos/${pedidoId}/detalle.json`)
       .then(r => r.json())
       .then(data => {
-        tbody.innerHTML = data.items.map(i => `
-          <tr>
-            <td>${escapeHtml(i.nombre)}</td>
-            <td class="col-center">${i.cantidad}</td>
-            <td>$${Number(i.precioUnitario).toLocaleString('es-AR')}</td>
-            <td>$${Number(i.subtotal).toLocaleString('es-AR')}</td>
-          </tr>
-        `).join('');
+        let acumulado = 0;
+        tbody.innerHTML = data.items.map(i => {
+          acumulado += Number(i.subtotal);
+          return `
+            <tr>
+              <td>${escapeHtml(i.nombre)}</td>
+              <td class="col-center">${i.cantidad}</td>
+              <td>$${Number(i.precioUnitario).toLocaleString('es-AR')}</td>
+              <td>$${Number(i.subtotal).toLocaleString('es-AR')}</td>
+              <td>$${acumulado.toLocaleString('es-AR')}</td>
+            </tr>
+          `;
+        }).join('');
       })
       .catch(() => {
-        tbody.innerHTML = '<tr><td colspan="4">Ocurrió un error al cargar el detalle.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5">Ocurrió un error al cargar el detalle.</td></tr>';
       });
   }
 </script>

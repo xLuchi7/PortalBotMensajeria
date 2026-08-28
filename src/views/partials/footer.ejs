@@ -1,20 +1,67 @@
   </main>
 </div>
-<% if (typeof flash !== 'undefined' && flash) { %>
-  <div class="toast-container">
-    <div class="toast toast-<%= flash.type %>" id="flash-toast">
-      <%- flash.type === 'success' ? icons.check : icons.alertTriangle %>
-      <span><%= flash.message %></span>
-    </div>
-  </div>
-  <script>
-    setTimeout(function () {
-      var t = document.getElementById('flash-toast');
-      if (!t) return;
-      t.classList.add('toast-hide');
-      setTimeout(function () { t.remove(); }, 220);
-    }, 3200);
-  </script>
-<% } %>
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+  const ICON_TOAST_CHECK = `<%- icons.check %>`;
+  const ICON_TOAST_WARN = `<%- icons.alertTriangle %>`;
+  const ICON_TOAST_CLOSE = `<%- icons.x %>`;
+
+  function mostrarToast(tipo, mensaje) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-' + tipo;
+    toast.innerHTML =
+      '<div class="toast-icon">' + (tipo === 'success' ? ICON_TOAST_CHECK : ICON_TOAST_WARN) + '</div>' +
+      '<div class="toast-text"></div>' +
+      '<button type="button" class="toast-close" aria-label="Cerrar">' + ICON_TOAST_CLOSE + '</button>' +
+      '<div class="toast-progress"></div>';
+    toast.querySelector('.toast-text').textContent = mensaje;
+    toast.querySelector('.toast-close').addEventListener('click', () => cerrarToast(toast));
+
+    container.appendChild(toast);
+    toast._timer = setTimeout(() => cerrarToast(toast), 3200);
+  }
+
+  function cerrarToast(toast) {
+    if (!toast || toast.classList.contains('toast-hide')) return;
+    clearTimeout(toast._timer);
+    toast.classList.add('toast-hide');
+    setTimeout(() => toast.remove(), 220);
+  }
+
+  <% if (typeof flash !== 'undefined' && flash) { %>
+    mostrarToast('<%= flash.type %>', <%- JSON.stringify(flash.message) %>);
+  <% } %>
+
+  // Reemplaza el globo de validación nativo del navegador por un toast, en
+  // cualquier formulario de la página — no hace falta tocar cada form.
+  document.querySelectorAll('form').forEach(form => {
+    form.setAttribute('novalidate', 'novalidate');
+    form.addEventListener('submit', (e) => {
+      if (form.checkValidity()) return;
+      e.preventDefault();
+
+      const invalido = form.querySelector(':invalid');
+      if (!invalido) {
+        mostrarToast('warning', 'Revisá los campos del formulario.');
+        return;
+      }
+
+      invalido.classList.add('field-invalid');
+      invalido.addEventListener('input', () => invalido.classList.remove('field-invalid'), { once: true });
+      invalido.focus();
+
+      const label = invalido.closest('label');
+      let campo = 'un campo obligatorio';
+      if (label && label.childNodes[0] && label.childNodes[0].nodeType === Node.TEXT_NODE) {
+        campo = label.childNodes[0].textContent.trim();
+      }
+      mostrarToast('warning', `Falta completar "${campo}".`);
+    });
+  });
+</script>
 </body>
 </html>

@@ -475,7 +475,7 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   align-items: flex-start;
   gap: 0.7rem;
-  padding: 0.9rem 2.2rem 0.95rem 0.9rem;
+  padding: 0.9rem 1.1rem 0.95rem 0.9rem;
   border-radius: 12px;
   box-shadow: 0 16px 40px rgba(20, 23, 43, 0.22), 0 2px 8px rgba(20, 23, 43, 0.1);
   min-width: 300px;
@@ -500,24 +500,6 @@ input:focus, select:focus, textarea:focus {
 }
 .toast-icon .icon { width: 16px; height: 16px; }
 .toast-text { font-size: 0.87rem; font-weight: 600; line-height: 1.45; color: #fff; padding-top: 0.2rem; }
-.toast-close {
-  position: absolute;
-  top: 0.55rem;
-  right: 0.55rem;
-  width: 22px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: none;
-  color: rgba(255, 255, 255, 0.8);
-  cursor: pointer;
-  border-radius: 6px;
-  padding: 0;
-}
-.toast-close .icon { width: 13px; height: 13px; }
-.toast-close:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
 .toast-progress {
   position: absolute;
   bottom: 0;

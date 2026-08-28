@@ -27,7 +27,6 @@
 <script>
   const ICON_TOAST_CHECK = `<%- icons.check %>`;
   const ICON_TOAST_WARN = `<%- icons.alertTriangle %>`;
-  const ICON_TOAST_CLOSE = `<%- icons.x %>`;
 
   function mostrarToast(tipo, mensaje) {
     const container = document.getElementById('toast-container');
@@ -38,10 +37,8 @@
     toast.innerHTML =
       '<div class="toast-icon">' + (tipo === 'success' ? ICON_TOAST_CHECK : ICON_TOAST_WARN) + '</div>' +
       '<div class="toast-text"></div>' +
-      '<button type="button" class="toast-close" aria-label="Cerrar">' + ICON_TOAST_CLOSE + '</button>' +
       '<div class="toast-progress"></div>';
     toast.querySelector('.toast-text').textContent = mensaje;
-    toast.querySelector('.toast-close').addEventListener('click', () => cerrarToast(toast));
 
     container.appendChild(toast);
     toast._timer = setTimeout(() => cerrarToast(toast), 3200);

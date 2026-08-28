@@ -1,4 +1,20 @@
   </main>
 </div>
+<% if (typeof flash !== 'undefined' && flash) { %>
+  <div class="toast-container">
+    <div class="toast toast-<%= flash.type %>" id="flash-toast">
+      <%- flash.type === 'success' ? icons.check : icons.alertTriangle %>
+      <span><%= flash.message %></span>
+    </div>
+  </div>
+  <script>
+    setTimeout(function () {
+      var t = document.getElementById('flash-toast');
+      if (!t) return;
+      t.classList.add('toast-hide');
+      setTimeout(function () { t.remove(); }, 220);
+    }, 3200);
+  </script>
+<% } %>
 </body>
 </html>

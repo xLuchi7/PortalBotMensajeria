@@ -32,6 +32,8 @@ app.use(session({
 }));
 app.use((req, res, next) => {
   res.locals.currentPath = req.path;
+  res.locals.flash = req.session.flash || null;
+  delete req.session.flash;
   next();
 });
 

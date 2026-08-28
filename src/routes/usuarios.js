@@ -2,6 +2,7 @@ const express = require('express');
 const { requireAuth, requireAdmin } = require('../middleware/requireAuth');
 const usuarios = require('../services/usuarioService');
 const clientes = require('../services/clienteService');
+const { setFlash } = require('../services/flash');
 
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
@@ -34,6 +35,7 @@ router.post('/usuarios/nuevo', async (req, res, next) => {
   try {
     const { email, password, rol, clienteId } = req.body;
     await usuarios.crearUsuario({ email, password, rol, clienteId: clienteId || null });
+    setFlash(req, 'success', 'Usuario creado correctamente.');
     res.redirect('/usuarios');
   } catch (err) {
     if (err.number === 2627 || err.number === 2601) {
@@ -66,6 +68,7 @@ router.post('/usuarios/:id/editar', async (req, res, next) => {
   try {
     const { email, password, rol, clienteId } = req.body;
     await usuarios.actualizarUsuario(req.params.id, { email, rol, clienteId: clienteId || null, password });
+    setFlash(req, 'success', 'Usuario actualizado correctamente.');
     res.redirect('/usuarios');
   } catch (err) {
     next(err);
@@ -75,6 +78,7 @@ router.post('/usuarios/:id/editar', async (req, res, next) => {
 router.post('/usuarios/:id/borrar', async (req, res, next) => {
   try {
     await usuarios.borrarUsuario(req.params.id);
+    setFlash(req, 'success', 'Usuario borrado.');
     res.redirect('/usuarios');
   } catch (err) {
     next(err);

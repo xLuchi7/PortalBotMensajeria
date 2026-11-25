@@ -1,0 +1,256 @@
+<%- include('partials/header') %>
+
+<div class="topbar"><h1>Integraciones</h1></div>
+<p class="page-hint">Conectá las herramientas que ya usás. Con Shopify conectado, el bot vende con tu catálogo, precios y stock reales, y los pedidos que confirmás acá aparecen solos en tu tienda.</p>
+
+<%
+  const esAdmin = usuario.rol === 'admin';
+  const conectado = conexion && conexion.estado !== 'desinstalada';
+  const ESTADO = { activa: ['Conectado', 'badge-activo'], error: ['Requiere atención', 'badge-pendiente'], desinstalada: ['Desinstalada', 'badge-inactivo'] };
+  const esc = (v) => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const copiable = (etiqueta, valor) => `
+    <div class="copy-row">
+      <span class="copy-label">${esc(etiqueta)}</span>
+      <code>${esc(valor)}</code>
+      <button type="button" class="icon-btn" title="Copiar" data-copy="${esc(valor)}" onclick="copiarTexto(this)">${icons.copy}</button>
+    </div>`;
+%>
+
+<div class="negocio-layout">
+  <div class="card integracion-card">
+    <div class="integracion-head">
+      <div class="integracion-logo"><%- icons.shoppingBag %></div>
+      <div>
+        <h2>Shopify</h2>
+        <p><%= conectado ? (conexion.nombreTienda || conexion.shopDomain) : 'Catálogo, stock y pedidos sincronizados con tu tienda' %></p>
+      </div>
+      <% if (conexion) { %>
+        <span class="badge <%= ESTADO[conexion.estado][1] %>"><%= ESTADO[conexion.estado][0] %></span>
+      <% } %>
+    </div>
+
+    <% if (!configurado && esAdmin) { %>
+      <%# ── Admin: asistente para crear la app de Shopify ── %>
+      <% if (app && app.secretIlegible) { %>
+        <div class="alert alert-warning">Las credenciales guardadas ya no se pueden leer (cambió la clave del servidor). Volvé a pegar el Client secret en el paso 5.</div>
+      <% } %>
+      <p class="wizard-intro">Configurá una vez la app de Shopify para <strong><%= cliente ? cliente.razonSocial : 'este cliente' %></strong>. Después el cliente conecta su tienda solo, con un botón. Tarda unos 5 minutos.</p>
+
+      <% const esLocal = /localhost|127\.0\.0\.1/.test(urlsApp.appUrl); %>
+      <% if (esLocal) { %>
+        <div class="alert alert-warning">Estás abriendo el portal desde <strong>localhost</strong>: sirve solo para probar con una tienda de desarrollo. Shopify no puede mandar avisos automáticos (cambios de precio y stock) a tu compu, así que vas a tener que usar <strong>Sincronizar ahora</strong>. Para el cliente real, hacé estos pasos entrando al portal desde la dirección de Railway.</div>
+      <% } %>
+
+      <ol class="wizard">
+        <li>
+          <h3>Creá la app en Shopify</h3>
+          <p>Entrá al Dev Dashboard con tu cuenta de Shopify, andá a <strong>Apps</strong> y tocá <strong>Crear app</strong>. Ponele un nombre que reconozcas, por ejemplo <em>Portal Mensajería<%= cliente ? ' – ' + cliente.razonSocial : '' %></em>.</p>
+          <a href="https://dev.shopify.com/dashboard" target="_blank" rel="noopener" class="btn btn-outline"><%- icons.externalLink %> Abrir Dev Dashboard</a>
+        </li>
+        <li>
+          <h3>Completá el formulario de la app</h3>
+          <p>En la misma pantalla de <strong>Crear app</strong>, copiá cada dato con el botón y pegalo en el campo que dice a la izquierda:</p>
+          <div class="copy-list">
+            <%- copiable('URL de la app', urlsApp.appUrl) %>
+            <%- copiable('URL de redireccionamiento', urlsApp.redirect) %>
+            <%- copiable('Alcances', urlsApp.scopes) %>
+            <%- copiable('Versión de la API de webhooks', urlsApp.apiVersion) %>
+          </div>
+          <p class="field-hint">Dejá <strong>sin tildar</strong> “Incrustar app en el panel de control de Shopify” y “Usar flujo de instalación heredado”. Después tocá <strong>Crear app</strong> (arriba a la derecha).</p>
+        </li>
+        <li>
+          <h3>Elegí la distribución personalizada</h3>
+          <p>Ya creada, entrás al <strong>Inicio</strong> de la app. Ahí hay una tarjeta <strong>Distribución</strong>: tocá <strong>Seleccionar método de distribución</strong>, elegí <strong>Personalizada</strong> y confirmá. <em>No se puede cambiar después.</em></p>
+          <p>En esa misma tarjeta tocá <strong>Administrar enlace de instalación personalizado</strong>, escribí la tienda del cliente (la que termina en <em>.myshopify.com</em>) y tocá <strong>Generar enlace</strong>. No hace falta mandar ese enlace: el cliente conecta desde acá, con el botón del portal.</p>
+          <p class="field-hint">Si en el Inicio no aparece la tarjeta Distribución, la app quedó creada dentro de la misma organización que la tienda: en ese caso salteá este paso.</p>
+        </li>
+        <li>
+          <h3>Cargá la IP del servidor (solo para tiendas de clientes)</h3>
+          <p>Desde el 20/11/2026 Shopify exige esto para apps personalizadas instaladas en tiendas que no son tuyas. En la app: <strong>Configuración → Lista de IP permitidas → Administrar</strong>.</p>
+          <p>Pegá la IP fija de salida del portal. En Railway la activás en el servicio: <strong>Settings → Networking → Static Outbound IPs</strong> (requiere plan Pro). Después en Shopify tildá <strong>Aplicar la lista de IP permitidas</strong> y guardá.</p>
+          <p class="field-hint">Para probar con tu propia tienda de desarrollo no hace falta.</p>
+        </li>
+        <li>
+          <h3>Pegá las credenciales acá</h3>
+          <p>En <strong>Configuración</strong> de la app están el <strong>ID de cliente</strong> (Client ID) y el <strong>Secreto</strong> (Client secret). Copialos y pegalos abajo.</p>
+          <%- include('partials/shopify-app-form') %>
+        </li>
+      </ol>
+      <p class="field-hint">El teléfono del comprador viaja en la nota del pedido de Shopify. No hace falta pedir permisos extra de datos de clientes.</p>
+
+    <% } else if (!configurado) { %>
+      <%# ── Cliente: todavía no habilitado ── %>
+      <ol class="pasos-conexion">
+        <li class="activo"><span>1</span>Habilitamos Shopify</li>
+        <li><span>2</span>Conectás tu tienda</li>
+        <li><span>3</span>¡Listo!</li>
+      </ol>
+      <div class="espera-box">
+        <div class="espera-icon"><%- icons.plug %></div>
+        <h3>Falta que habilitemos Shopify en tu cuenta</h3>
+        <p>Es un paso que hace el equipo del portal (Shopify lo exige por seguridad). Pasale a tu contacto la dirección de tu tienda, la que termina en <strong>.myshopify.com</strong>.</p>
+        <p style="margin-top: 0.6rem;">Cuando esté habilitado, en esta misma pantalla vas a ver el botón <strong>Conectar con Shopify</strong>: escribís tu tienda, aceptás los permisos en Shopify y listo.</p>
+      </div>
+
+    <% } else if (!conectado) { %>
+      <%# ── Conectar la tienda ── %>
+      <% if (conexion && conexion.estado === 'desinstalada') { %>
+        <div class="alert alert-warning">La app se desinstaló desde Shopify. Volvé a conectar para seguir sincronizando.</div>
+      <% } %>
+
+      <ol class="pasos-conexion">
+        <li class="activo"><span>1</span>Escribí tu tienda</li>
+        <li><span>2</span>Aceptá en Shopify</li>
+        <li><span>3</span>¡Listo!</li>
+      </ol>
+
+      <form method="POST" action="/clientes/<%= clienteId %>/shopify/conectar" id="form-conectar">
+        <label>Dirección de tu tienda
+          <div class="integracion-form">
+            <input type="text" name="shop" id="input-shop" required placeholder="mitienda.myshopify.com" autocomplete="off" spellcheck="false"
+                   value="<%= shopPendiente || (conexion ? conexion.shopDomain : '') %>">
+            <button type="submit" class="btn btn-primary"><%- icons.plug %> Conectar con Shopify</button>
+          </div>
+        </label>
+        <p class="shop-preview" id="shop-preview" aria-live="polite"></p>
+      </form>
+
+      <details class="ayuda">
+        <summary>¿Dónde encuentro la dirección de mi tienda?</summary>
+        <p>Entrá a tu admin de Shopify y mirá la barra del navegador. Si dice <code>admin.shopify.com/store/<strong>mitienda</strong></code>, escribí <strong>mitienda</strong>. También podés pegar la dirección completa: la reconocemos sola.</p>
+      </details>
+      <details class="ayuda">
+        <summary>¿Qué permisos pide y por qué?</summary>
+        <ul>
+          <li><strong>Ver productos</strong>: para que el bot ofrezca tu catálogo con precios reales.</li>
+          <li><strong>Ver inventario</strong>: para no vender lo que no tenés.</li>
+          <li><strong>Crear y ver pedidos</strong>: para cargar en tu tienda los pedidos que confirmás acá, sin duplicarlos.</li>
+        </ul>
+        <p>No tocamos tus pagos, tus clientes ni la configuración de tu tienda. Podés desconectar cuando quieras.</p>
+      </details>
+      <details class="ayuda">
+        <summary>¿Quién tiene que hacerlo?</summary>
+        <p>La persona dueña de la tienda, o alguien de tu equipo con permiso para instalar apps en Shopify.</p>
+      </details>
+
+    <% } else { %>
+      <%# ── Conectado ── %>
+      <% if (conexion.estado === 'error') { %>
+        <div class="alert alert-warning">
+          <%= conexion.ultimoError || 'Hubo un problema con la conexión.' %>
+          <form method="POST" action="/clientes/<%= clienteId %>/shopify/conectar" class="inline">
+            <input type="hidden" name="shop" value="<%= conexion.shopDomain %>">
+            <button type="submit" class="btn btn-primary" style="margin-top: 0.6rem;"><%- icons.refresh %> Reconectar</button>
+          </form>
+        </div>
+      <% } %>
+
+      <div class="integracion-stats">
+        <div class="integracion-stat"><span>Artículos de Shopify</span><strong><%= resumen.articulosShopify %></strong></div>
+        <div class="integracion-stat"><span>Pedidos enviados</span><strong><%= resumen.pedidosEnviados %></strong></div>
+        <div class="integracion-stat"><span>Última sincronización</span><strong id="ultima-sync" data-fecha="<%= conexion.ultimaSync ? new Date(conexion.ultimaSync).toISOString() : '' %>" style="font-size: 0.9rem;">—</strong></div>
+      </div>
+
+      <% if (resumen.pedidosConError) { %>
+        <div class="alert alert-warning">
+          <%= resumen.pedidosConError %> pedido<%= resumen.pedidosConError === 1 ? '' : 's' %> no se pudo enviar a Shopify.
+          <a href="/clientes/<%= clienteId %>/pedidos">Revisalos en Pedidos</a> para reintentar.
+        </div>
+      <% } %>
+      <% if (resumen.articulosManuales) { %>
+        <div class="alert alert-info">
+          Tenés <%= resumen.articulosManuales %> artículo<%= resumen.articulosManuales === 1 ? '' : 's' %> cargado<%= resumen.articulosManuales === 1 ? '' : 's' %> a mano que no existe<%= resumen.articulosManuales === 1 ? '' : 'n' %> en Shopify. El bot los sigue ofreciendo, pero esos pedidos no se van a poder enviar a la tienda: desactivalos o creálos en Shopify con el mismo SKU.
+        </div>
+      <% } %>
+
+      <div class="integracion-actions">
+        <button type="button" class="btn btn-primary" onclick="iniciarSyncShopify(<%= clienteId %>)"><%- icons.refresh %> Sincronizar ahora</button>
+        <a href="https://<%= conexion.shopDomain %>/admin" target="_blank" rel="noopener" class="btn btn-outline"><%- icons.externalLink %> Abrir mi tienda</a>
+        <form method="POST" action="/clientes/<%= clienteId %>/shopify/desconectar" class="inline">
+          <button type="button" class="btn btn-danger-outline"
+                  onclick="confirmarEliminar('¿Desconectar Shopify? El bot va a seguir usando los artículos que ya están cargados, pero dejan de actualizarse solos y los pedidos ya no se envían a la tienda.', this.closest('form'))">Desconectar</button>
+        </form>
+      </div>
+    <% } %>
+
+    <% if (configurado && esAdmin) { %>
+      <details class="ayuda ayuda-admin">
+        <summary><%- icons.key %> Credenciales de la app (solo admin)</summary>
+        <p>App <%= app.esGeneral ? 'general, para todos los clientes' : 'personalizada de este cliente' %> · Client ID <code><%= app.clientId %></code></p>
+        <div class="copy-list">
+          <%- copiable('URL de la app', urlsApp.appUrl) %>
+          <%- copiable('URL de redireccionamiento', urlsApp.redirect) %>
+        </div>
+        <p class="field-hint">Si reemplazás las credenciales, las tiendas conectadas con la app anterior tienen que reconectar.</p>
+        <%- include('partials/shopify-app-form') %>
+      </details>
+    <% } %>
+  </div>
+
+  <div class="card negocio-tips">
+    <% if (!configurado && esAdmin) { %>
+      <div class="negocio-tips-header"><%- icons.fileText %> ¿Qué distribución elijo?</div>
+      <ul>
+        <li><strong>Personalizada</strong>: una app por cliente, sin revisión de Shopify. Ideal para los primeros clientes</li>
+        <li><strong>Pública (unlisted)</strong>: una sola app para todos. Requiere que Shopify la apruebe una vez (App Review)</li>
+        <li>Podés empezar con personalizadas y sumar la pública después: los clientes ya conectados siguen funcionando</li>
+        <li>Cada tienda es del cliente: el portal solo accede a lo que el cliente acepta</li>
+      </ul>
+    <% } else { %>
+      <div class="negocio-tips-header"><%- icons.fileText %> Cómo funciona</div>
+      <ul>
+        <li>Cada producto y variante de Shopify aparece en Artículos y el bot lo ofrece por WhatsApp</li>
+        <li>Precios, stock y productos nuevos se actualizan solos al cambiarlos en Shopify</li>
+        <li>Al pasar un pedido a <strong>Confirmado</strong>, se crea en Shopify con el pago pendiente y descuenta stock</li>
+        <li>Si cancelás un pedido ya enviado, también se cancela en Shopify y vuelve el stock</li>
+        <li>Los artículos de Shopify se editan en Shopify, no acá</li>
+      </ul>
+    <% } %>
+  </div>
+</div>
+
+<%- include('partials/shopify-sync-dialog') %>
+
+<script>
+  function copiarTexto(btn) {
+    navigator.clipboard.writeText(btn.dataset.copy)
+      .then(() => mostrarToast('success', 'Copiado'))
+      .catch(() => mostrarToast('warning', 'No Se Pudo Copiar'));
+  }
+
+  (function () {
+    const el = document.getElementById('ultima-sync');
+    if (el) {
+      const iso = el.dataset.fecha;
+      el.textContent = iso ? new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : 'En curso…';
+    }
+
+    // Misma lógica que normalizarShop() del servidor: muestra a qué tienda va.
+    const input = document.getElementById('input-shop');
+    const preview = document.getElementById('shop-preview');
+    if (input && preview) {
+      const normalizar = (v) => {
+        let s = String(v || '').trim().toLowerCase();
+        if (!s) return '';
+        const m = s.match(/admin\.shopify\.com\/store\/([a-z0-9][a-z0-9-]*)/);
+        if (m) s = m[1];
+        s = s.replace(/^https?:\/\//, '').split(/[/?#]/)[0];
+        if (!s.includes('.')) s += '.myshopify.com';
+        return /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(s) ? s : null;
+      };
+      const actualizar = () => {
+        const shop = normalizar(input.value);
+        preview.className = 'shop-preview' + (shop ? ' ok' : shop === null ? ' mal' : '');
+        preview.textContent = shop ? `Vamos a conectar ${shop}` : shop === null ? 'Esa dirección no parece de Shopify. Tiene que terminar en .myshopify.com' : '';
+      };
+      input.addEventListener('input', actualizar);
+      actualizar();
+    }
+
+    <% if (syncJobId) { %>
+      seguirSyncShopify(<%= clienteId %>, <%- JSON.stringify(syncJobId) %>);
+    <% } %>
+  })();
+</script>
+
+<%- include('partials/footer') %>

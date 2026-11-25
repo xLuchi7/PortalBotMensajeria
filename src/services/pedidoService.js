@@ -22,7 +22,13 @@ async function listarPedidos(clienteId, page = 1) {
     pool
       .request()
       .input('clienteId', sql.Int, clienteId)
-      .query('SELECT ISNULL(SUM(total), 0) AS totalMonto FROM Pedidos WHERE clienteId = @clienteId'),
+      .query(`
+        SELECT
+          ISNULL(SUM(total), 0) AS totalMonto,
+          SUM(CASE WHEN estado = 'pendiente' THEN 1 ELSE 0 END) AS pendientes,
+          SUM(CASE WHEN estado = 'reclamado' THEN 1 ELSE 0 END) AS reclamados
+        FROM Pedidos WHERE clienteId = @clienteId
+      `),
     pool
       .request()
       .input('clienteId', sql.Int, clienteId)
@@ -31,9 +37,12 @@ async function listarPedidos(clienteId, page = 1) {
       .query(`
         SELECT
           p.id, p.userId, p.estado, p.total, p.notas,
+          COALESCE(ch.nombre, ch.nombrePerfil) AS contactoNombre,
+          p.shopifyOrderId, p.shopifyOrderName, p.shopifyEstado, p.shopifyError,
           FORMAT(p.fechaAlta AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy, HH:mm:ss') AS fecha
         FROM Pedidos p
         JOIN Clientes c ON c.id = p.clienteId
+        LEFT JOIN Chats ch ON ch.clienteId = p.clienteId AND ch.userId = p.userId
         WHERE p.clienteId = @clienteId
         ORDER BY p.id DESC
         OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
@@ -49,6 +58,8 @@ async function listarPedidos(clienteId, page = 1) {
     pageSize: PAGE_SIZE,
     totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
     totalMonto: sumResult.recordset[0].totalMonto,
+    pendientes: sumResult.recordset[0].pendientes || 0,
+    reclamados: sumResult.recordset[0].reclamados || 0,
   };
 }
 
@@ -74,7 +85,10 @@ async function obtenerDetalle(pedidoId, clienteId) {
 // (no al crear el pedido), porque es cuando realmente salio la mercaderia.
 // "reclamado" lo pone el bot directamente en la base (ver Bot_Mensajeria), no se
 // elige desde este flujo -- solo su transicion a "solucionado" pasa por aca.
-async function actualizarEstado(pedidoId, clienteId, nuevoEstado) {
+// omitirStock: el Cliente tiene Shopify conectado, que es quien maneja el
+// inventario (descuenta al crear la orden y nos avisa por webhook) -- tocar el
+// Stock local ademas lo descontaria dos veces.
+async function actualizarEstado(pedidoId, clienteId, nuevoEstado, { omitirStock = false } = {}) {
   const pool = await getPool();
 
   const actual = await pool
@@ -92,7 +106,7 @@ async function actualizarEstado(pedidoId, clienteId, nuevoEstado) {
   // de un reclamo.
   if (pedido.estado === 'reclamado') {
     if (nuevoEstado !== 'solucionado') throw new Error('Un pedido reclamado solo puede pasar a Solucionado.');
-    return marcarComoSolucionado(pool, pedidoId, clienteId);
+    return marcarComoSolucionado(pool, pedidoId, clienteId, { omitirStock });
   }
 
   if (ESTADOS_FINALES.includes(pedido.estado)) throw new EstadoFinalError();
@@ -121,7 +135,7 @@ async function actualizarEstado(pedidoId, clienteId, nuevoEstado) {
 
     // Los artículos sin control de stock (usaStock = 0) no tienen un número
     // real que descontar — se tratan como siempre disponibles.
-    for (const item of items.recordset.filter(i => i.usaStock)) {
+    for (const item of omitirStock ? [] : items.recordset.filter(i => i.usaStock)) {
       await new sql.Request(transaction)
         .input('articuloId', sql.Int, item.articuloId)
         .input('cantidad', sql.Int, item.cantidad)
@@ -143,7 +157,7 @@ async function actualizarEstado(pedidoId, clienteId, nuevoEstado) {
 // Devuelve el Stock que se había descontado al entregar (mismas líneas, mismos
 // usaStock) y resuelve los Escalamientos ligados a este pedido — el reclamo del
 // cliente y el estado del pedido son, en la práctica, la misma cosa resuelta.
-async function marcarComoSolucionado(pool, pedidoId, clienteId) {
+async function marcarComoSolucionado(pool, pedidoId, clienteId, { omitirStock = false } = {}) {
   const transaction = new sql.Transaction(pool);
   await transaction.begin();
   try {
@@ -156,7 +170,7 @@ async function marcarComoSolucionado(pool, pedidoId, clienteId) {
         WHERE d.pedidoId = @pedidoId
       `);
 
-    for (const item of items.recordset.filter(i => i.usaStock)) {
+    for (const item of omitirStock ? [] : items.recordset.filter(i => i.usaStock)) {
       await new sql.Request(transaction)
         .input('articuloId', sql.Int, item.articuloId)
         .input('cantidad', sql.Int, item.cantidad)

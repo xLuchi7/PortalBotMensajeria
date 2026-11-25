@@ -30,9 +30,11 @@ async function listarEscalamientos(clienteId, page = 1) {
       .query(`
         SELECT
           e.id, e.userId, e.motivo, e.estado,
+          COALESCE(ch.nombre, ch.nombrePerfil) AS contactoNombre,
           FORMAT(e.fechaAlta AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy, HH:mm:ss') AS fecha
         FROM Escalamientos e
         JOIN Clientes c ON c.id = e.clienteId
+        LEFT JOIN Chats ch ON ch.clienteId = e.clienteId AND ch.userId = e.userId
         WHERE e.clienteId = @clienteId
         ORDER BY CASE WHEN e.estado = 'resuelto' THEN 1 ELSE 0 END, e.id DESC
         OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY

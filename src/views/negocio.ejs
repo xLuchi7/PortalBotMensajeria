@@ -1,30 +1,101 @@
 <%- include('partials/header') %>
 
-<div class="topbar"><h1>Mi Negocio</h1></div>
-<p class="page-hint">Esto lo lee el bot antes de cada respuesta, además de sus instrucciones generales — contale cómo es tu negocio, tus horarios, políticas, o cómo te gustaría que hable. Los cambios se aplican al toque, no hace falta nada más.</p>
-
-<div class="negocio-layout">
-  <div class="card" style="padding: 1.75rem;">
-    <form method="POST" action="/clientes/<%= clienteId %>/negocio">
-      <label>Información de tu negocio
-        <textarea name="contextoNegocio" rows="18" placeholder="Ej: Somos una tienda de electrónica en Buenos Aires. Atendemos de lunes a viernes de 9 a 18hs. Los envíos tardan entre 2 y 5 días hábiles. Preferimos un trato cercano e informal."><%= contexto %></textarea>
-      </label>
-      <button type="submit" class="btn btn-primary"><%- icons.save %> Guardar</button>
-    </form>
-  </div>
-
-  <div class="card negocio-tips">
-    <div class="negocio-tips-header"><%- icons.fileText %> Ideas para incluir</div>
-    <ul>
-      <li>Información que querés que sepa de tu negocio</li>
-      <li>Horarios de atención</li>
-      <li>Zonas y tiempos de envío</li>
-      <li>Políticas de cambio o devolución</li>
-      <li>Formas de pago que aceptás</li>
-      <li>Cómo te gustaría que hable el bot (formal, informal, con humor, etc.)</li>
-      <li>Promociones o datos que quieras que mencione</li>
-    </ul>
+<div class="page-head">
+  <div>
+    <h1>Mi Negocio</h1>
+    <p class="page-sub">Prendé o apagá el bot y contale cómo es tu negocio para que responda como vos.</p>
   </div>
 </div>
+
+<section class="seccion">
+  <h2 class="seccion-titulo"><%- icons.power %> Estado del bot</h2>
+  <%- include('partials/bot-switch', {
+    action: `/clientes/${clienteId}/negocio/bot`,
+    activo: cliente.botActivo !== false,
+    volver: `/clientes/${clienteId}/negocio`,
+    ajax: false,
+    titulo: { on: 'El bot está respondiendo', off: 'El bot está apagado' },
+    texto: {
+      on: 'Contesta solo a todos tus chats, salvo los que pausaste desde Chats.',
+      off: 'No le responde a nadie. Los mensajes se siguen guardando y los ves en Chats.',
+    },
+  }) %>
+
+  <% if (usuario.rol === 'admin') { %>
+    <div class="ajuste">
+      <div class="ajuste-texto">
+        <strong>Chats de números nuevos <span class="tag badge-admin">Solo admin</span></strong>
+        <span>Cuando alguien escribe por primera vez, el bot arranca así en ese chat. No cambia los chats que ya existen.</span>
+      </div>
+      <form method="POST" action="/clientes/<%= clienteId %>/negocio/chats-nuevos" class="segmentado">
+        <button type="submit" name="activo" value="1" class="<%= cliente.botChatsNuevosActivo ? 'active is-on' : '' %>">Responde</button>
+        <button type="submit" name="activo" value="0" class="<%= cliente.botChatsNuevosActivo ? '' : 'active is-off' %>">No responde</button>
+      </form>
+    </div>
+  <% } %>
+</section>
+
+<section class="seccion">
+  <h2 class="seccion-titulo"><%- icons.sparkles %> Lo que el bot sabe de tu negocio</h2>
+  <div class="negocio-layout">
+    <div class="card editor-card">
+      <form method="POST" action="/clientes/<%= clienteId %>/negocio" id="contexto-form">
+        <textarea name="contextoNegocio" id="contexto" rows="16" maxlength="8000" placeholder="Ej: Somos un almacén de barrio en Palermo. Atendemos de lunes a sábado de 8 a 21 hs. Hacemos envíos en el día dentro de 20 cuadras. Aceptamos efectivo, transferencia y Mercado Pago. Hablá cercano y con buena onda."><%= contexto %></textarea>
+        <div class="editor-footer">
+          <span class="editor-estado" id="contexto-estado"><span id="contexto-largo"><%= (contexto || '').length %></span> caracteres · el bot lo lee antes de cada respuesta</span>
+          <button type="submit" class="btn btn-primary"><%- icons.save %> Guardar</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card negocio-tips">
+      <div class="negocio-tips-header"><%- icons.sparkles %> Tocá para agregar</div>
+      <p>Cuanto más le cuentes, mejor responde. Tocá una idea y completala.</p>
+      <div class="tips">
+        <button type="button" data-plantilla="Horarios de atención: ">Horarios</button>
+        <button type="button" data-plantilla="Envíos (zonas, costos y demora): ">Envíos</button>
+        <button type="button" data-plantilla="Formas de pago: ">Formas de pago</button>
+        <button type="button" data-plantilla="Cambios y devoluciones: ">Cambios</button>
+        <button type="button" data-plantilla="Dirección del local: ">Dirección</button>
+        <button type="button" data-plantilla="Promociones vigentes: ">Promociones</button>
+        <button type="button" data-plantilla="Cómo quiero que hable el bot (tono, emojis, firma): ">Forma de hablar</button>
+        <button type="button" data-plantilla="Lo que NO tiene que hacer el bot: ">Lo que no hace</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  (() => {
+    const area = document.getElementById('contexto');
+    const largo = document.getElementById('contexto-largo');
+    const estado = document.getElementById('contexto-estado');
+    const original = area.value;
+    let enviando = false;
+
+    const actualizar = () => {
+      largo.textContent = area.value.length;
+      estado.classList.toggle('is-dirty', area.value !== original);
+    };
+    area.addEventListener('input', actualizar);
+
+    // Las ideas agregan una línea nueva al final y dejan el cursor listo para escribir.
+    document.querySelectorAll('[data-plantilla]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const texto = area.value.replace(/\s+$/, '');
+        area.value = (texto ? texto + '\n' : '') + btn.dataset.plantilla;
+        area.focus();
+        area.setSelectionRange(area.value.length, area.value.length);
+        area.scrollTop = area.scrollHeight;
+        actualizar();
+      });
+    });
+
+    document.getElementById('contexto-form').addEventListener('submit', () => { enviando = true; });
+    window.addEventListener('beforeunload', (e) => {
+      if (!enviando && area.value !== original) e.preventDefault();
+    });
+  })();
+</script>
 
 <%- include('partials/footer') %>

@@ -52,8 +52,30 @@ async function obtenerCliente(id) {
   const result = await pool
     .request()
     .input('id', sql.Int, id)
-    .query('SELECT id, razonSocial, cuit, telefono, email, activo, zonaHoraria FROM Clientes WHERE id = @id');
+    .query('SELECT id, razonSocial, cuit, telefono, email, activo, zonaHoraria, botActivo, botChatsNuevosActivo FROM Clientes WHERE id = @id');
   return result.recordset[0] ?? null;
+}
+
+// Interruptor general: con botActivo = 0 el bot no le responde a ningún chat de
+// este Cliente (Bot_Mensajeria lo lee en cada mensaje entrante, sin caché).
+async function setBotGeneral(id, activo) {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input('id', sql.Int, id)
+    .input('activo', sql.Bit, activo)
+    .query('UPDATE Clientes SET botActivo = @activo WHERE id = @id');
+}
+
+// Con qué arranca el bot en el chat de un número que escribe por primera vez.
+// Bot_Mensajeria lo aplica al crear la fila en Chats: cambiarlo no toca chats existentes.
+async function setBotChatsNuevos(id, activo) {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input('id', sql.Int, id)
+    .input('activo', sql.Bit, activo)
+    .query('UPDATE Clientes SET botChatsNuevosActivo = @activo WHERE id = @id');
 }
 
 async function crearCliente({ razonSocial, cuit, telefono, email, zonaHoraria }) {
@@ -124,6 +146,8 @@ module.exports = {
   listarClientes,
   listarClientesActivos,
   obtenerCliente,
+  setBotGeneral,
+  setBotChatsNuevos,
   crearCliente,
   actualizarCliente,
   obtenerContexto,

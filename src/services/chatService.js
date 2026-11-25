@@ -1,0 +1,252 @@
+const { getPool, sql } = require('./db');
+const { numero: formatearNumero } = require('../viewHelpers');
+
+const PAGE_SIZE = 25;
+const MAX_MENSAJES_CHAT = 300;
+const VENTANA_MINUTOS = 24 * 60;
+
+// Estado de cada chat, calculado a partir de lo que ya registra el bot (de mayor a
+// menor prioridad): un reclamo sin resolver tapa todo lo demás, después si llegó a
+// hacer un Pedido, después si buscó Artículos que tenemos (intención de compra), y
+// si no, es solo una consulta.
+const ESTADOS = {
+  reclamo: { label: 'Reclamo Abierto', clase: 'badge-danger' },
+  pedido: { label: 'Pedido Realizado', clase: 'badge-success' },
+  intencion: { label: 'Intención De Compra', clase: 'badge-info' },
+  consulta: { label: 'Solo Consulta', clase: 'badge-neutral' },
+};
+
+// Una fila por chat (clienteId + userId) con su último mensaje, el estado calculado
+// y si el bot está pausado para ese número. Sin fila en Chats = bot activo.
+const CHATS_CTE = `
+  WITH ult AS (
+    SELECT userId, MAX(id) AS ultId, COUNT(*) AS cantidad
+    FROM Mensajes
+    WHERE clienteId = @clienteId
+    GROUP BY userId
+  ),
+  bandeja AS (
+    SELECT
+      u.userId, u.ultId, u.cantidad,
+      m.content AS ultimoMensaje, m.role AS ultimoRol, m.platform, m.esError AS ultimoEsError, m.enviadoPor AS ultimoEnviadoPor,
+      CAST(m.createdAt AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria AS datetime2) AS ultimaFechaLocal,
+      CAST(SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria AS date) AS hoyLocal,
+      CAST(ISNULL(ch.botActivo, 1) AS bit) AS botActivo,
+      ch.nombre, ch.nombrePerfil,
+      CASE
+        WHEN EXISTS (SELECT 1 FROM Escalamientos e WHERE e.clienteId = @clienteId AND e.userId = u.userId AND e.estado <> 'resuelto') THEN 'reclamo'
+        WHEN EXISTS (SELECT 1 FROM Pedidos p WHERE p.clienteId = @clienteId AND p.userId = u.userId) THEN 'pedido'
+        WHEN EXISTS (SELECT 1 FROM ConsultasArticulo ca WHERE ca.clienteId = @clienteId AND ca.userId = u.userId AND ca.encontrado = 1) THEN 'intencion'
+        ELSE 'consulta'
+      END AS estado
+    FROM ult u
+    JOIN Mensajes m ON m.id = u.ultId
+    JOIN Clientes c ON c.id = @clienteId
+    LEFT JOIN Chats ch ON ch.clienteId = @clienteId AND ch.userId = u.userId
+  )
+`;
+
+function fechaCorta(local, hoy) {
+  // local/hoy vienen como datetime2/date ya pasados a la zona del Cliente, y mssql
+  // los arma como Date en UTC: se leen con getUTC* para no correrlos de nuevo.
+  const pad = n => String(n).padStart(2, '0');
+  const hora = `${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}`;
+  const dias = Math.round(
+    (Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate()) -
+      Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate())) / 86400000
+  );
+  if (dias <= 0) return hora;
+  if (dias === 1) return 'Ayer';
+  if (dias < 7) return ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][local.getUTCDay()];
+  return `${pad(local.getUTCDate())}/${pad(local.getUTCMonth() + 1)}/${String(local.getUTCFullYear()).slice(2)}`;
+}
+
+function filtrosDe({ q, estado, bot }) {
+  return {
+    // Se busca por nombre (el propio o el de WhatsApp) o por número; para el número
+    // se ignoran espacios, guiones y el +, así se puede pegar tal cual se ve.
+    q: q ? `%${String(q).replace(/[%_[\]]/g, '')}%` : null,
+    qDigitos: q && /\d/.test(q) ? `%${String(q).replace(/\D/g, '')}%` : null,
+    estado: ESTADOS[estado] ? estado : null,
+    bot: bot === 'pausado' ? 0 : bot === 'activo' ? 1 : null,
+  };
+}
+
+async function listarChats(clienteId, { page = 1, q, estado, bot } = {}) {
+  const pool = await getPool();
+  const offset = (page - 1) * PAGE_SIZE;
+  const f = filtrosDe({ q, estado, bot });
+
+  const [rowsResult, resumenResult] = await Promise.all([
+    pool
+      .request()
+      .input('clienteId', sql.Int, clienteId)
+      .input('q', sql.NVarChar, f.q)
+      .input('qDigitos', sql.NVarChar, f.qDigitos)
+      .input('estado', sql.NVarChar, f.estado)
+      .input('bot', sql.Bit, f.bot)
+      .input('offset', sql.Int, offset)
+      .input('pageSize', sql.Int, PAGE_SIZE)
+      .query(`${CHATS_CTE}
+        SELECT *, COUNT(*) OVER () AS totalFiltrado
+        FROM bandeja
+        WHERE (@q IS NULL OR nombre LIKE @q OR nombrePerfil LIKE @q OR userId LIKE @q OR userId LIKE @qDigitos)
+          AND (@estado IS NULL OR estado = @estado)
+          AND (@bot IS NULL OR botActivo = @bot)
+        ORDER BY ultId DESC
+        OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
+      `),
+    pool
+      .request()
+      .input('clienteId', sql.Int, clienteId)
+      .query(`${CHATS_CTE}
+        SELECT
+          COUNT(*) AS total,
+          SUM(CASE WHEN botActivo = 0 THEN 1 ELSE 0 END) AS pausados,
+          SUM(CASE WHEN estado = 'reclamo' THEN 1 ELSE 0 END) AS reclamo,
+          SUM(CASE WHEN estado = 'pedido' THEN 1 ELSE 0 END) AS pedido,
+          SUM(CASE WHEN estado = 'intencion' THEN 1 ELSE 0 END) AS intencion,
+          SUM(CASE WHEN estado = 'consulta' THEN 1 ELSE 0 END) AS consulta
+        FROM bandeja
+      `),
+  ]);
+
+  const rows = rowsResult.recordset.map(r => ({
+    ...r,
+    numero: formatearNumero(r.userId),
+    nombreVisible: r.nombre || r.nombrePerfil || null,
+    fechaCorta: fechaCorta(r.ultimaFechaLocal, r.hoyLocal),
+    estadoInfo: ESTADOS[r.estado],
+  }));
+  const total = rows[0]?.totalFiltrado ?? 0;
+  const resumen = resumenResult.recordset[0];
+
+  return {
+    rows,
+    total,
+    page,
+    pageSize: PAGE_SIZE,
+    totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
+    resumen: {
+      total: resumen.total || 0,
+      pausados: resumen.pausados || 0,
+      reclamo: resumen.reclamo || 0,
+      pedido: resumen.pedido || 0,
+      intencion: resumen.intencion || 0,
+      consulta: resumen.consulta || 0,
+    },
+    filtros: { q: q || '', estado: f.estado || '', bot: bot === 'pausado' || bot === 'activo' ? bot : '' },
+  };
+}
+
+// Conversación completa de un número (los últimos MAX_MENSAJES_CHAT), más el estado
+// del interruptor. null si ese número nunca le escribió a este Cliente.
+async function obtenerChat(clienteId, userId) {
+  const pool = await getPool();
+  const [mensajesResult, chatResult] = await Promise.all([
+    pool
+      .request()
+      .input('clienteId', sql.Int, clienteId)
+      .input('userId', sql.NVarChar, userId)
+      .input('max', sql.Int, MAX_MENSAJES_CHAT)
+      .query(`
+        SELECT * FROM (
+          SELECT TOP (@max)
+            m.id, m.role, m.content, m.esError, m.platform, m.enviadoPor,
+            FORMAT(m.createdAt AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'HH:mm') AS hora,
+            FORMAT(m.createdAt AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy') AS dia
+          FROM Mensajes m
+          JOIN Clientes c ON c.id = m.clienteId
+          WHERE m.clienteId = @clienteId AND m.userId = @userId
+          ORDER BY m.id DESC
+        ) ultimos
+        ORDER BY id ASC
+      `),
+    pool
+      .request()
+      .input('clienteId', sql.Int, clienteId)
+      .input('userId', sql.NVarChar, userId)
+      .query(`${CHATS_CTE}
+        SELECT ch.userId, ch.cantidad, ch.platform, ch.botActivo, ch.estado, ch.nombre, ch.nombrePerfil,
+          x.botActualizadoPor,
+          FORMAT(x.botActualizadoEn AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy HH:mm') AS botActualizadoEn,
+          (SELECT DATEDIFF(MINUTE, MAX(mu.createdAt), SYSUTCDATETIME()) FROM Mensajes mu
+            WHERE mu.clienteId = @clienteId AND mu.userId = ch.userId AND mu.role = 'user') AS minutosDesdeCliente
+        FROM bandeja ch
+        JOIN Clientes c ON c.id = @clienteId
+        LEFT JOIN Chats x ON x.clienteId = @clienteId AND x.userId = ch.userId
+        WHERE ch.userId = @userId
+      `),
+  ]);
+
+  const chat = chatResult.recordset[0];
+  if (!chat) return null;
+  return {
+    ...chat,
+    numero: formatearNumero(chat.userId),
+    nombreVisible: chat.nombre || chat.nombrePerfil || null,
+    estadoInfo: ESTADOS[chat.estado],
+    // WhatsApp solo deja mandar texto libre hasta 24 h después del último mensaje del cliente.
+    ventanaAbierta: chat.minutosDesdeCliente != null && chat.minutosDesdeCliente < VENTANA_MINUTOS,
+    ventanaRestante: chat.minutosDesdeCliente != null ? Math.max(0, VENTANA_MINUTOS - chat.minutosDesdeCliente) : 0,
+    mensajes: mensajesResult.recordset,
+  };
+}
+
+// Pausa o reactiva el bot para un número. El bot lo lee en cada mensaje entrante
+// (y otra vez antes de mandar la respuesta), así que el cambio corta al instante.
+// Devuelve false si ese número no tiene mensajes con este Cliente.
+async function setBotChat(clienteId, userId, activo, actualizadoPor) {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input('clienteId', sql.Int, clienteId)
+    .input('userId', sql.NVarChar, userId)
+    .input('activo', sql.Bit, activo)
+    .input('por', sql.NVarChar, actualizadoPor || null)
+    .query(`
+      IF NOT EXISTS (SELECT 1 FROM Mensajes WHERE clienteId = @clienteId AND userId = @userId)
+        SELECT CAST(0 AS bit) AS ok;
+      ELSE
+      BEGIN
+        MERGE Chats WITH (HOLDLOCK) AS t
+        USING (SELECT @clienteId AS clienteId, @userId AS userId) AS s
+          ON t.clienteId = s.clienteId AND t.userId = s.userId
+        WHEN MATCHED THEN
+          UPDATE SET botActivo = @activo, botActualizadoEn = SYSUTCDATETIME(), botActualizadoPor = @por
+        WHEN NOT MATCHED THEN
+          INSERT (clienteId, userId, botActivo, botActualizadoEn, botActualizadoPor)
+          VALUES (@clienteId, @userId, @activo, SYSUTCDATETIME(), @por);
+        SELECT CAST(1 AS bit) AS ok;
+      END
+    `);
+  return Boolean(result.recordset[0]?.ok);
+}
+
+// Nombre propio para un número (vacío = volver a mostrar el de WhatsApp o el número).
+// Si el chat todavía no tiene fila en Chats (chats de antes de que existiera la
+// tabla), se crea con el bot activo, que es como ya venía funcionando.
+async function setNombreChat(clienteId, userId, nombre) {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input('clienteId', sql.Int, clienteId)
+    .input('userId', sql.NVarChar, userId)
+    .input('nombre', sql.NVarChar, nombre ? String(nombre).trim().slice(0, 100) : null)
+    .query(`
+      IF NOT EXISTS (SELECT 1 FROM Mensajes WHERE clienteId = @clienteId AND userId = @userId)
+        SELECT CAST(0 AS bit) AS ok;
+      ELSE
+      BEGIN
+        MERGE Chats WITH (HOLDLOCK) AS t
+        USING (SELECT @clienteId AS clienteId, @userId AS userId) AS s
+          ON t.clienteId = s.clienteId AND t.userId = s.userId
+        WHEN MATCHED THEN UPDATE SET nombre = @nombre
+        WHEN NOT MATCHED THEN INSERT (clienteId, userId, botActivo, nombre) VALUES (@clienteId, @userId, 1, @nombre);
+        SELECT CAST(1 AS bit) AS ok;
+      END
+    `);
+  return Boolean(result.recordset[0]?.ok);
+}
+
+module.exports = { ESTADOS, listarChats, obtenerChat, setBotChat, setNombreChat };

@@ -1,16 +1,19 @@
 <%- include('partials/header') %>
 
-<div class="topbar">
-  <h1>Clientes</h1>
-  <a href="/clientes/nuevo" class="btn btn-primary"><%- icons.plus %> Nuevo cliente</a>
+<div class="page-head">
+  <div>
+    <h1>Clientes</h1>
+    <p class="page-sub">Los negocios que usan el bot. Entrá a cualquiera para ver sus chats, pedidos y configuración.</p>
+  </div>
+  <div class="page-actions"><a href="/clientes/nuevo" class="btn btn-primary"><%- icons.plus %> Nuevo cliente</a></div>
 </div>
-<p class="page-hint">Cada fila es un negocio que usa el bot (no sus clientes finales). Desde acá accedés a sus Pedidos, Artículos, Mensajes, Consultas y Escalamientos, y podés desactivarlo sin perder su historial.</p>
+
+<div class="stats">
+  <div class="stat"><span class="stat-icon tone-primary"><%- icons.briefcase %></span><div><strong><%= total %></strong><span>cliente<%= total === 1 ? '' : 's' %></span></div></div>
+  <div class="stat"><span class="stat-icon tone-success"><%- icons.check %></span><div><strong><%= activos %></strong><span>activos</span></div></div>
+</div>
 
 <div class="card">
-  <div class="card-header">
-    <span><strong><%= total %></strong>&nbsp;cliente<%= total === 1 ? '' : 's' %></span>
-    <span><%= activos %> activos</span>
-  </div>
   <% if (!rows.length) { %>
     <div class="empty-state">
       <%- icons.briefcase %>
@@ -25,19 +28,14 @@
         <tbody>
           <% rows.forEach(c => { %>
             <tr class="<%= !c.activo ? 'row-inactive' : '' %>">
-              <td><%= c.razonSocial %></td>
-              <td><%= c.cuit %></td>
-              <td><%= c.telefono %></td>
+              <td><a href="/clientes/<%= c.id %>/chats" class="cell-cliente"><span class="avatar avatar-sm"><%= iniciales(c.razonSocial) %></span><strong><%= c.razonSocial %></strong></a></td>
+              <td class="nowrap"><%= c.cuit %></td>
+              <td class="nowrap"><%= numero(c.telefono) %></td>
               <td><%= c.email || '-' %></td>
               <td class="col-center"><span class="badge <%= c.activo ? 'badge-activo' : 'badge-inactivo' %>"><%= c.activo ? 'Activo' : 'Inactivo' %></span></td>
               <td>
                 <div class="cell-actions">
-                  <a href="/clientes/<%= c.id %>/negocio" class="icon-btn" title="Mi Negocio"><%- icons.fileText %></a>
-                  <a href="/clientes/<%= c.id %>/pedidos" class="icon-btn" title="Pedidos"><%- icons.truck %></a>
-                  <a href="/clientes/<%= c.id %>/articulos" class="icon-btn" title="Artículos"><%- icons.package %></a>
-                  <a href="/clientes/<%= c.id %>/mensajes" class="icon-btn" title="Mensajes"><%- icons.message %></a>
-                  <a href="/clientes/<%= c.id %>/consultas" class="icon-btn" title="Consultas"><%- icons.search %></a>
-                  <a href="/clientes/<%= c.id %>/escalamientos" class="icon-btn" title="Escalamientos"><%- icons.alertTriangle %></a>
+                  <a href="/clientes/<%= c.id %>/chats" class="btn btn-accent btn-sm">Entrar <%- icons.arrowLeft.replace('class="icon"', 'class="icon icon-flip"') %></a>
                   <a href="/clientes/<%= c.id %>/editar" class="icon-btn" title="Editar"><%- icons.edit %></a>
                   <% if (c.activo) { %>
                     <form method="POST" action="/clientes/<%= c.id %>/borrar" class="inline">

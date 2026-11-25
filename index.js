@@ -11,18 +11,25 @@ const config = require('./src/config');
 const authRoutes = require('./src/routes/auth');
 const dashboardRoutes = require('./src/routes/dashboard');
 const usuariosRoutes = require('./src/routes/usuarios');
+const shopifyRoutes = require('./src/routes/shopify');
+const shopifySync = require('./src/services/shopifySyncService');
 const { getPool } = require('./src/services/db');
 const icons = require('./src/icons');
 const timezones = require('./src/timezones');
 
 const app = express();
+// Railway termina el HTTPS en un proxy: así req.protocol es "https".
+app.set('trust proxy', 1);
 
 app.set('view engine', 'ejs');
 app.set('views', './src/views');
 app.locals.icons = icons;
 app.locals.timezones = timezones;
+Object.assign(app.locals, require('./src/viewHelpers')); // numero, fecha, plata, iniciales
 
 app.use(express.static('public'));
+// Antes de urlencoded/session: la firma de Shopify se valida sobre el body crudo.
+app.use('/', shopifyRoutes.webhookRouter);
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
   secret: config.sessionSecret,
@@ -37,12 +44,15 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use('/', shopifyRoutes.publicRouter);
 app.use('/', authRoutes);
+app.use('/', shopifyRoutes.router);
 app.use('/', dashboardRoutes);
 app.use('/', usuariosRoutes);
 
 app.listen(config.port, () => {
   console.log(`Portal Mensajeria running on port ${config.port}`);
+  shopifySync.iniciarSyncPeriodica();
 
   getPool()
     .then(() => console.log(`[db] Connected to ${config.db.database} on ${config.db.server}`))

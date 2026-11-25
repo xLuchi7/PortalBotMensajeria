@@ -8,74 +8,89 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+<%
+  // Un solo menú para admin y cliente: el admin lo ve cuando entra a un Cliente
+  // puntual, el cliente siempre con el suyo. Para sumar una página, agregala acá.
+  const esAdmin = usuario.rol === 'admin';
+  const clienteActual = typeof cliente !== 'undefined' && cliente ? cliente : null;
+  const navClienteId = esAdmin ? (clienteActual ? clienteId : null) : usuario.clienteId;
+  const grupos = [
+    { titulo: 'Atención', items: [
+      { ruta: 'chats', label: 'Chats', icono: 'message' },
+      { ruta: 'escalamientos', label: 'Escalamientos', icono: 'alertTriangle' },
+      { ruta: 'consultas', label: 'Consultas', icono: 'search' },
+    ] },
+    { titulo: 'Ventas', items: [
+      { ruta: 'pedidos', label: 'Pedidos', icono: 'truck' },
+      { ruta: 'articulos', label: 'Artículos', icono: 'package' },
+    ] },
+    { titulo: 'Configuración', items: [
+      { ruta: 'negocio', label: 'Mi Negocio', icono: 'fileText' },
+      { ruta: 'integraciones', label: 'Integraciones', icono: 'plug' },
+    ] },
+  ];
+  const activa = ruta => currentPath.startsWith(`/clientes/${navClienteId}/${ruta}`);
+  const nombreUsuario = esAdmin ? 'Administrador' : (usuario.razonSocial || usuario.email);
+%>
 <div class="app-shell">
   <aside class="sidebar">
-    <div class="sidebar-brand"><%- icons.bot %> Portal</div>
+    <div class="sidebar-brand">
+      <span class="brand-mark"><%- icons.bot %></span>
+      <span class="brand-text"><strong>Portal</strong><small>Tu asistente de ventas</small></span>
+    </div>
 
-    <% if (usuario.rol === 'admin') { %>
+    <% if (esAdmin) { %>
       <div class="sidebar-section">Administración</div>
       <nav class="sidebar-nav">
-        <a href="/clientes" class="<%= currentPath.startsWith('/clientes') && !currentPath.match(/^\/clientes\/\d/) ? 'active' : '' %>">
+        <a href="/clientes" class="<%= currentPath.startsWith('/clientes') && !/^\/clientes\/\d/.test(currentPath) ? 'active' : '' %>">
           <%- icons.briefcase %><span class="label">Clientes</span>
         </a>
         <a href="/usuarios" class="<%= currentPath.startsWith('/usuarios') ? 'active' : '' %>">
           <%- icons.users %><span class="label">Usuarios</span>
         </a>
       </nav>
-      <% if (typeof cliente !== 'undefined' && cliente) { %>
-        <div class="sidebar-section">Viendo: <%= cliente.razonSocial %></div>
-        <nav class="sidebar-nav">
-          <a href="/clientes/<%= clienteId %>/negocio" class="<%= currentPath.endsWith('/negocio') ? 'active' : '' %>">
-            <%- icons.fileText %><span class="label">Mi Negocio</span>
-          </a>
-          <a href="/clientes/<%= clienteId %>/pedidos" class="<%= currentPath.includes('/pedidos') ? 'active' : '' %>">
-            <%- icons.truck %><span class="label">Pedidos</span>
-          </a>
-          <a href="/clientes/<%= clienteId %>/articulos" class="<%= currentPath.includes('/articulos') ? 'active' : '' %>">
-            <%- icons.package %><span class="label">Artículos</span>
-          </a>
-          <a href="/clientes/<%= clienteId %>/mensajes" class="<%= currentPath.endsWith('/mensajes') ? 'active' : '' %>">
-            <%- icons.message %><span class="label">Mensajes</span>
-          </a>
-          <a href="/clientes/<%= clienteId %>/consultas" class="<%= currentPath.endsWith('/consultas') ? 'active' : '' %>">
-            <%- icons.search %><span class="label">Consultas</span>
-          </a>
-          <a href="/clientes/<%= clienteId %>/escalamientos" class="<%= currentPath.endsWith('/escalamientos') ? 'active' : '' %>">
-            <%- icons.alertTriangle %><span class="label">Escalamientos</span>
-          </a>
-        </nav>
+    <% } %>
+
+    <% if (navClienteId) { %>
+      <% if (esAdmin && clienteActual) { %>
+        <div class="sidebar-viendo">
+          <span class="avatar avatar-sm"><%= iniciales(clienteActual.razonSocial) %></span>
+          <span><small>Viendo</small><%= clienteActual.razonSocial %></span>
+        </div>
       <% } %>
-    <% } else { %>
-      <div class="sidebar-section">Tu cuenta</div>
-      <nav class="sidebar-nav">
-        <a href="/clientes/<%= usuario.clienteId %>/negocio" class="<%= currentPath.endsWith('/negocio') ? 'active' : '' %>">
-          <%- icons.fileText %><span class="label">Mi Negocio</span>
+
+      <% if (clienteActual && typeof clienteActual.botActivo === 'boolean') { %>
+        <a href="/clientes/<%= navClienteId %>/negocio" class="sidebar-bot <%= clienteActual.botActivo ? 'is-on' : 'is-off' %>"
+           title="<%= clienteActual.botActivo ? 'El bot está respondiendo. Tocá para ir a apagarlo.' : 'El bot está apagado. Tocá para ir a encenderlo.' %>">
+          <span class="sidebar-bot-avatar"><%- icons.bot %><span class="sidebar-bot-dot"></span></span>
+          <span class="sidebar-bot-text">
+            <small>Tu asistente</small>
+            <strong><%= clienteActual.botActivo ? 'Respondiendo' : 'Apagado' %></strong>
+          </span>
+          <span class="mini-switch" aria-hidden="true"><span></span></span>
         </a>
-        <a href="/clientes/<%= usuario.clienteId %>/pedidos" class="<%= currentPath.includes('/pedidos') ? 'active' : '' %>">
-          <%- icons.truck %><span class="label">Pedidos</span>
-        </a>
-        <a href="/clientes/<%= usuario.clienteId %>/articulos" class="<%= currentPath.includes('/articulos') ? 'active' : '' %>">
-          <%- icons.package %><span class="label">Artículos</span>
-        </a>
-        <a href="/clientes/<%= usuario.clienteId %>/mensajes" class="<%= currentPath.endsWith('/mensajes') ? 'active' : '' %>">
-          <%- icons.message %><span class="label">Mensajes</span>
-        </a>
-        <a href="/clientes/<%= usuario.clienteId %>/consultas" class="<%= currentPath.endsWith('/consultas') ? 'active' : '' %>">
-          <%- icons.search %><span class="label">Consultas</span>
-        </a>
-        <a href="/clientes/<%= usuario.clienteId %>/escalamientos" class="<%= currentPath.endsWith('/escalamientos') ? 'active' : '' %>">
-          <%- icons.alertTriangle %><span class="label">Escalamientos</span>
-        </a>
-      </nav>
+      <% } %>
+
+      <% grupos.forEach(g => { %>
+        <div class="sidebar-section"><%= g.titulo %></div>
+        <nav class="sidebar-nav">
+          <% g.items.forEach(i => { %>
+            <a href="/clientes/<%= navClienteId %>/<%= i.ruta %>" class="<%= activa(i.ruta) ? 'active' : '' %>">
+              <%- icons[i.icono] %><span class="label"><%= i.label %></span>
+            </a>
+          <% }) %>
+        </nav>
+      <% }) %>
     <% } %>
 
     <div class="sidebar-footer">
+      <span class="avatar"><%= iniciales(nombreUsuario) %></span>
       <div class="sidebar-user">
-        <strong><%= usuario.rol === 'admin' ? 'Panel Admin' : usuario.razonSocial %></strong>
-        <%= usuario.email %>
+        <strong><%= nombreUsuario %></strong>
+        <span><%= usuario.email %></span>
       </div>
-      <form method="POST" action="/logout" class="inline" style="width: 100%;">
-        <button type="submit" class="btn-logout"><%- icons.logOut %><span class="label">Salir</span></button>
+      <form method="POST" action="/logout" class="inline">
+        <button type="submit" class="btn-logout" title="Salir" aria-label="Salir"><%- icons.logOut %></button>
       </form>
     </div>
   </aside>

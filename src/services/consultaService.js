@@ -23,9 +23,11 @@ async function listarConsultas(clienteId, page = 1) {
       .query(`
         SELECT
           v.tipo, v.userId, v.detalle, v.articuloNombre, v.sinStock, v.pedidoId, v.pedidoEstado,
+          COALESCE(ch.nombre, ch.nombrePerfil) AS contactoNombre,
           FORMAT(v.fechaAlta AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy, HH:mm:ss') AS fecha
         FROM VConsultas v
         JOIN Clientes c ON c.id = v.clienteId
+        LEFT JOIN Chats ch ON ch.clienteId = v.clienteId AND ch.userId = v.userId
         WHERE v.clienteId = @clienteId
         ORDER BY v.fechaAlta DESC
         OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY

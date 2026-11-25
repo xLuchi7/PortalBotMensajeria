@@ -18,7 +18,7 @@ async function listarArticulos(clienteId, page = 1) {
       .input('offset', sql.Int, offset)
       .input('pageSize', sql.Int, PAGE_SIZE)
       .query(`
-        SELECT a.id, a.codigo, a.nombre, a.descripcion, a.precio, a.activo, a.usaStock, ISNULL(s.cantidad, 0) AS stock
+        SELECT a.id, a.codigo, a.nombre, a.descripcion, a.precio, a.activo, a.usaStock, a.origen, a.shopifyProductId, ISNULL(s.cantidad, 0) AS stock
         FROM Articulos a
         LEFT JOIN Stock s ON s.articuloId = a.id
         WHERE a.clienteId = @clienteId
@@ -45,7 +45,7 @@ async function obtenerArticulo(id, clienteId) {
     .request()
     .input('id', sql.Int, id)
     .input('clienteId', sql.Int, clienteId)
-    .query('SELECT id, codigo, nombre, descripcion, precio, activo, usaStock FROM Articulos WHERE id = @id AND clienteId = @clienteId');
+    .query('SELECT id, codigo, nombre, descripcion, precio, activo, usaStock, origen FROM Articulos WHERE id = @id AND clienteId = @clienteId');
   return result.recordset[0] ?? null;
 }
 

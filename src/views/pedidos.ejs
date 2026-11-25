@@ -1,33 +1,56 @@
 <%- include('partials/header') %>
 
-<div class="topbar"><h1>Pedidos</h1></div>
-<p class="page-hint">Al marcar un pedido como <strong>Entregado</strong> se descuenta el Stock de cada artículo. "Entregado", "Cancelado" y "Solucionado" son estados finales: una vez ahí no se pueden volver a cambiar. Un pedido pasa a <strong>Reclamado</strong> automáticamente cuando el bot detecta un reclamo sobre él; al marcarlo <strong>Solucionado</strong> se devuelve el Stock y se resuelve el Escalamiento asociado.</p>
+<% const conShopify = typeof shopifyConexion !== 'undefined' && shopifyConexion; %>
+<% const mostrarShopify = conShopify || rows.some(p => p.shopifyEstado); %>
+<div class="page-head">
+  <div>
+    <h1>Pedidos</h1>
+    <p class="page-sub">Lo que tus clientes compraron por WhatsApp. Cambiá el estado desde la etiqueta de cada pedido.</p>
+  </div>
+</div>
+<details class="page-help">
+  <summary><%- icons.info %> ¿Cómo funcionan los estados?</summary>
+  <div>
+    <% if (conShopify) { %>
+      <p>Al pasar un pedido a <strong>Confirmado</strong> se crea en tu tienda de Shopify con el pago pendiente y Shopify descuenta el stock. Si lo cancelás después, también se cancela en Shopify.</p>
+      <p>Un pedido pasa a <strong>Reclamado</strong> solo cuando el bot detecta un reclamo; al marcarlo <strong>Solucionado</strong> se resuelve el escalamiento asociado (la devolución de stock se maneja en Shopify).</p>
+    <% } else { %>
+      <p>Al marcar un pedido como <strong>Entregado</strong> se descuenta el stock de cada artículo.</p>
+      <p>Un pedido pasa a <strong>Reclamado</strong> solo cuando el bot detecta un reclamo; al marcarlo <strong>Solucionado</strong> se devuelve el stock y se resuelve el escalamiento asociado.</p>
+    <% } %>
+    <p><strong>Entregado</strong>, <strong>Cancelado</strong> y <strong>Solucionado</strong> son estados finales: después no se pueden cambiar.</p>
+  </div>
+</details>
+
+<div class="stats">
+  <div class="stat"><span class="stat-icon tone-primary"><%- icons.truck %></span><div><strong><%= total %></strong><span>pedido<%= total === 1 ? '' : 's' %> en total</span></div></div>
+  <div class="stat"><span class="stat-icon tone-success"><%- icons.wallet %></span><div><strong><%= plata(totalMonto) %></strong><span>vendido por el bot</span></div></div>
+  <div class="stat <%= pendientes ? 'stat-alert-warning' : '' %>"><span class="stat-icon tone-warning"><%- icons.clock %></span><div><strong><%= pendientes %></strong><span>esperando confirmación</span></div></div>
+  <div class="stat <%= reclamados ? 'stat-alert-danger' : '' %>"><span class="stat-icon tone-danger"><%- icons.alertTriangle %></span><div><strong><%= reclamados %></strong><span>con reclamo</span></div></div>
+</div>
 
 <div class="card">
-  <div class="card-header">
-    <span><strong><%= total %></strong>&nbsp;pedido<%= total === 1 ? '' : 's' %></span>
-    <span>Total: <strong>$<%= Number(totalMonto).toLocaleString('es-AR') %></strong></span>
-  </div>
   <% if (!rows.length) { %>
     <div class="empty-state">
       <%- icons.truck %>
-      <p>No hay pedidos.</p>
+      <h3>Todavía no hay pedidos</h3>
+      <p>Cuando un cliente confirme una compra por WhatsApp, el pedido va a aparecer acá.</p>
     </div>
   <% } else { %>
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th class="col-id">#</th><th class="col-fecha">Fecha</th><th class="col-usuario">Usuario</th><th>Total</th><th class="col-center">Estado</th><th>Notas</th><th></th></tr>
+          <tr><th class="col-id">#</th><th class="col-fecha">Fecha</th><th>Cliente</th><th class="col-num">Total</th><th class="col-center">Estado</th><% if (mostrarShopify) { %><th class="col-center">Shopify</th><% } %><th>Notas</th><th></th></tr>
         </thead>
         <tbody>
           <% const ESTADOS_FINALES = ['entregado', 'cancelado', 'solucionado']; %>
           <% const ESTADO_LABEL = { entregado: 'Entregado', cancelado: 'Cancelado', solucionado: 'Solucionado' }; %>
           <% rows.forEach(p => { %>
             <tr>
-              <td>#<%= p.id %></td>
-              <td class="col-fecha"><%= p.fecha %></td>
-              <td class="col-usuario"><%= p.userId %></td>
-              <td>$<%= Number(p.total).toLocaleString('es-AR') %></td>
+              <td class="cell-id">#<%= p.id %></td>
+              <td class="col-fecha"><% const f = fecha(p.fecha); %><div class="cell-fecha"><span><%= f.dia %></span><small><%= f.hora %></small></div></td>
+              <td><a class="contacto" href="/clientes/<%= clienteId %>/chats?chat=<%= encodeURIComponent(p.userId) %>" title="Abrir el chat"><%- icons.message %><% if (p.contactoNombre) { %><span class="contacto-texto"><strong><%= p.contactoNombre %></strong><small><%= numero(p.userId) %></small></span><% } else { %><%= numero(p.userId) %><% } %></a></td>
+              <td class="col-num"><strong><%= plata(p.total) %></strong></td>
               <td class="col-center">
                 <% if (p.estado === 'reclamado') { %>
                   <form method="POST" action="/clientes/<%= clienteId %>/pedidos/<%= p.id %>/estado" class="inline">
@@ -49,6 +72,36 @@
                   </form>
                 <% } %>
               </td>
+              <% if (mostrarShopify) { %>
+                <td class="col-center">
+                  <div class="shopify-cell">
+                    <% if (p.shopifyOrderId) { %>
+                      <a href="https://<%= conShopify ? shopifyConexion.shopDomain : '' %>/admin/orders/<%= String(p.shopifyOrderId).split('/').pop() %>" target="_blank" rel="noopener"
+                         title="<%= p.shopifyError || (p.shopifyEstado === 'cancelado' ? 'Cancelado en Shopify' : 'Ver en Shopify') %>"
+                         <%= conShopify ? '' : 'onclick="return false"' %>>
+                        <%= p.shopifyOrderName || 'Ver' %><%- icons.externalLink %>
+                      </a>
+                      <% if (p.shopifyError) { %><span title="<%= p.shopifyError %>" style="color: var(--warning); display: inline-flex;"><%- icons.alertTriangle %></span><% } %>
+                    <% } else if (p.shopifyEstado === 'error') { %>
+                      <span class="badge badge-cancelado" style="width: auto;" title="<%= p.shopifyError %>">Error</span>
+                      <% if (conShopify) { %>
+                        <form method="POST" action="/clientes/<%= clienteId %>/pedidos/<%= p.id %>/shopify/reintentar" class="inline">
+                          <button type="submit" class="icon-btn" title="Reintentar envío a Shopify: <%= p.shopifyError %>"><%- icons.refresh %></button>
+                        </form>
+                      <% } %>
+                    <% } else if (p.shopifyEstado === 'enviando') { %>
+                      <span class="field-hint">Enviando…</span>
+                      <% if (conShopify) { %>
+                        <form method="POST" action="/clientes/<%= clienteId %>/pedidos/<%= p.id %>/shopify/reintentar" class="inline">
+                          <button type="submit" class="icon-btn" title="Reintentar envío a Shopify"><%- icons.refresh %></button>
+                        </form>
+                      <% } %>
+                    <% } else { %>
+                      <span class="field-hint">-</span>
+                    <% } %>
+                  </div>
+                </td>
+              <% } %>
               <td>
                 <div class="notas-cell">
                   <span><%= p.notas || '-' %></span>

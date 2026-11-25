@@ -55,6 +55,48 @@
     mostrarToast('<%= flash.type %>', <%- JSON.stringify(flash.message) %>);
   <% } %>
 
+  // Interruptores del bot (partials/bot-switch): guardan al instante con fetch y
+  // actualizan la tarjeta sin recargar. Si fetch falla de red, cae al submit común.
+  document.querySelectorAll('form[data-bot-switch]').forEach(form => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (form.classList.contains('is-saving')) return;
+      const inputActivo = form.querySelector('input[name="activo"]');
+      const btn = form.querySelector('.bot-toggle');
+      form.classList.add('is-saving');
+      try {
+        const resp = await fetch(form.action, {
+          method: 'POST',
+          headers: { Accept: 'application/json' },
+          body: new URLSearchParams(new FormData(form)),
+          credentials: 'same-origin',
+        });
+        if (resp.redirected) { location.href = resp.url; return; } // sesión vencida → login
+        const data = await resp.json().catch(() => null);
+        if (!resp.ok || !data || !data.ok) {
+          mostrarToast('warning', (data && data.mensaje) || 'No Se Pudo Guardar, Probá De Nuevo');
+          return;
+        }
+        const on = data.activo;
+        form.classList.toggle('is-on', on);
+        form.classList.toggle('is-off', !on);
+        inputActivo.value = on ? '0' : '1';
+        btn.setAttribute('aria-checked', on ? 'true' : 'false');
+        btn.setAttribute('aria-label', on ? 'Apagar el bot' : 'Encender el bot');
+        form.querySelector('[data-titulo]').textContent = on ? form.dataset.tituloOn : form.dataset.tituloOff;
+        form.querySelector('[data-texto]').textContent = on ? form.dataset.textoOn : form.dataset.textoOff;
+        form.removeAttribute('title'); // el tooltip describía el estado anterior
+        mostrarToast(on ? 'success' : 'warning', data.mensaje);
+        const filaLista = document.querySelector('.chat-item.active');
+        if (filaLista) filaLista.classList.toggle('is-paused', !on);
+      } catch (err) {
+        form.submit();
+      } finally {
+        form.classList.remove('is-saving');
+      }
+    });
+  });
+
   // Reemplaza el globo de validación nativo del navegador por un toast, en
   // cualquier formulario de la página — no hace falta tocar cada form.
   document.querySelectorAll('form').forEach(form => {

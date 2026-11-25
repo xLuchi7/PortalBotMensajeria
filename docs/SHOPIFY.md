@@ -38,7 +38,7 @@ Se pueden combinar: un Cliente con app propia la sigue usando aunque después se
 
 ## Notas técnicas
 
-- Código: `src/services/shopify*.js`, `src/routes/shopify.js`, `src/views/integraciones.ejs`, `partials/shopify-app-form.ejs`.
+- Código: `src/services/shopify*.js`, `src/routes/shopify.js` (webhooks + instalación/OAuth), las rutas `/api/clientes/:id/shopify/*` e `/integraciones` en `src/routes/api.js`, y `client/src/pages/Integraciones.jsx` + `client/src/components/ShopifySync.jsx`.
 - Tablas: `ShopifyApps` (credenciales; `clienteId` NULL = app general), `ShopifyConexiones` (una por Cliente, con `appId`), `ShopifyWebhookLog` (dedupe). Columnas `shopify*` en `Articulos` y `Pedidos`.
 - Tokens y secrets cifrados con AES-256-GCM. La clave se deriva de `SESSION_SECRET` (o `TOKEN_ENC_KEY` si existe). **Si cambia `SESSION_SECRET`**, hay que volver a cargar las credenciales y reconectar las tiendas (el portal lo avisa).
 - La URL pública se toma del dominio desde el que el admin cargó las credenciales. `APP_URL` (opcional) la fuerza.

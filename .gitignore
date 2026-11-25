@@ -19,3 +19,6 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+
+# Frontend compilado (lo genera npm run build)
+client/dist/

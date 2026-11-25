@@ -249,4 +249,21 @@ async function setNombreChat(clienteId, userId, nombre) {
   return Boolean(result.recordset[0]?.ok);
 }
 
-module.exports = { ESTADOS, listarChats, obtenerChat, setBotChat, setNombreChat };
+// Huella barata de la bandeja para el polling de la página de Chats: el id del
+// último mensaje (sube con cada mensaje nuevo, de cualquier chat) más cuántos
+// chats tienen el bot pausado. Si cambia, la página se vuelve a pedir.
+async function huellaBandeja(clienteId) {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input('clienteId', sql.Int, clienteId)
+    .query(`
+      SELECT
+        (SELECT MAX(id) FROM Mensajes WHERE clienteId = @clienteId) AS ultimoId,
+        (SELECT COUNT(*) FROM Chats WHERE clienteId = @clienteId AND botActivo = 0) AS pausados
+    `);
+  const r = result.recordset[0] || {};
+  return `${r.ultimoId || 0}-${r.pausados || 0}`;
+}
+
+module.exports = { ESTADOS, listarChats, obtenerChat, setBotChat, setNombreChat, huellaBandeja };

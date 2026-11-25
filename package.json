@@ -4,24 +4,32 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "vite build",
+    "dev": "nodemon --watch index.js --watch src index.js",
+    "dev:client": "vite"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@vitejs/plugin-react": "^5.2.0",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.2",
-    "ejs": "^6.0.1",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "mssql": "^12.7.0",
-    "multer": "^2.2.0"
+    "multer": "^2.2.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.7",
+    "vite": "^7.3.8"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

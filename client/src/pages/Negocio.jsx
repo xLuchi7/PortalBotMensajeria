@@ -1,0 +1,177 @@
+import { useEffect, useRef, useState } from 'react';
+import { useBlocker, useParams } from 'react-router-dom';
+import Icon from '../components/Icon.jsx';
+import BotSwitch from '../components/BotSwitch.jsx';
+import { ErrorCarga, PageHead, useTitulo } from '../components/ui.jsx';
+import { useAvisar } from '../components/Toasts.jsx';
+import { useConfirm } from '../components/Confirm.jsx';
+import { useCliente } from '../components/Layout.jsx';
+import { useAuth } from '../lib/auth.jsx';
+import { api, useApi } from '../lib/api.js';
+
+const IDEAS = [
+  ['Horarios', 'Horarios de atención: '],
+  ['Envíos', 'Envíos (zonas, costos y demora): '],
+  ['Formas de pago', 'Formas de pago: '],
+  ['Cambios', 'Cambios y devoluciones: '],
+  ['Dirección', 'Dirección del local: '],
+  ['Promociones', 'Promociones vigentes: '],
+  ['Forma de hablar', 'Cómo quiero que hable el bot (tono, emojis, firma): '],
+  ['Lo que no hace', 'Lo que NO tiene que hacer el bot: '],
+];
+
+export default function Negocio() {
+  useTitulo('Mi Negocio');
+  const { clienteId } = useParams();
+  const { usuario } = useAuth();
+  const { cliente, setCliente } = useCliente();
+  const { data, error, reload } = useApi(`/clientes/${clienteId}/negocio`);
+  const avisar = useAvisar();
+  const [guardandoBot, setGuardandoBot] = useState(false);
+
+  const cambiarBot = async (activo) => {
+    setGuardandoBot(true);
+    try {
+      const r = await api(`/clientes/${clienteId}/negocio/bot`, { method: 'POST', body: { activo } });
+      setCliente(c => ({ ...c, botActivo: r.activo }));
+      avisar(r);
+    } catch (err) { avisar(err); }
+    setGuardandoBot(false);
+  };
+
+  const cambiarChatsNuevos = async (activo) => {
+    if (cliente?.botChatsNuevosActivo === activo) return;
+    try {
+      const r = await api(`/clientes/${clienteId}/negocio/chats-nuevos`, { method: 'POST', body: { activo } });
+      setCliente(c => ({ ...c, botChatsNuevosActivo: r.activo }));
+      avisar(r);
+    } catch (err) { avisar(err); }
+  };
+
+  return (
+    <>
+      <PageHead titulo="Mi Negocio" sub="Prendé o apagá el bot y contale cómo es tu negocio para que responda como vos." />
+
+      <section className="seccion">
+        <h2 className="seccion-titulo"><Icon name="power" /> Estado del bot</h2>
+        {cliente ? (
+          <BotSwitch
+            activo={cliente.botActivo !== false}
+            onToggle={cambiarBot}
+            guardando={guardandoBot}
+            titulo={{ on: 'El bot está respondiendo', off: 'El bot está apagado' }}
+            texto={{
+              on: 'Contesta solo a todos tus chats, salvo los que pausaste desde Chats.',
+              off: 'No le responde a nadie. Los mensajes se siguen guardando y los ves en Chats.',
+            }}
+          />
+        ) : <div className="bot-switch"><span className="skeleton" style={{ width: '50%' }} /></div>}
+
+        {usuario.rol === 'admin' && cliente && (
+          <div className="ajuste">
+            <div className="ajuste-texto">
+              <strong>Chats de números nuevos <span className="tag badge-admin">Solo admin</span></strong>
+              <span>Cuando alguien escribe por primera vez, el bot arranca así en ese chat. No cambia los chats que ya existen.</span>
+            </div>
+            <div className="segmentado" role="radiogroup" aria-label="Chats de números nuevos">
+              <button type="button" role="radio" aria-checked={Boolean(cliente.botChatsNuevosActivo)}
+                      className={cliente.botChatsNuevosActivo ? 'active is-on' : ''} onClick={() => cambiarChatsNuevos(true)}>Responde</button>
+              <button type="button" role="radio" aria-checked={!cliente.botChatsNuevosActivo}
+                      className={cliente.botChatsNuevosActivo ? '' : 'active is-off'} onClick={() => cambiarChatsNuevos(false)}>No responde</button>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="seccion">
+        <h2 className="seccion-titulo"><Icon name="sparkles" /> Lo que el bot sabe de tu negocio</h2>
+        {error && !data ? <ErrorCarga error={error} onReintentar={reload} />
+          : !data ? <div className="card editor-card"><span className="skeleton" style={{ width: '80%' }} /></div>
+          : <EditorContexto clienteId={clienteId} inicial={data.contexto || ''} />}
+      </section>
+    </>
+  );
+}
+
+function EditorContexto({ clienteId, inicial }) {
+  const [texto, setTexto] = useState(inicial);
+  const [guardado, setGuardado] = useState(inicial);
+  const [guardando, setGuardando] = useState(false);
+  const area = useRef(null);
+  const avisar = useAvisar();
+  const confirmar = useConfirm();
+  const sucio = texto !== guardado;
+
+  // Cambios sin guardar: avisa al cerrar la pestaña o al ir a otra página.
+  useEffect(() => {
+    const alSalir = e => { if (sucio) e.preventDefault(); };
+    window.addEventListener('beforeunload', alSalir);
+    return () => window.removeEventListener('beforeunload', alSalir);
+  }, [sucio]);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => sucio && currentLocation.pathname !== nextLocation.pathname);
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return;
+    confirmar({
+      titulo: '¿Salir sin guardar?',
+      mensaje: 'Hiciste cambios en lo que el bot sabe de tu negocio y no los guardaste.',
+      boton: 'Salir sin guardar',
+    }).then(ok => (ok ? blocker.proceed() : blocker.reset()));
+  }, [blocker, confirmar]);
+
+  const agregar = (plantilla) => {
+    const base = texto.replace(/\s+$/, '');
+    const nuevo = (base ? base + '\n' : '') + plantilla;
+    setTexto(nuevo);
+    requestAnimationFrame(() => {
+      const el = area.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(nuevo.length, nuevo.length);
+      el.scrollTop = el.scrollHeight;
+    });
+  };
+
+  const guardar = async (e) => {
+    e.preventDefault();
+    setGuardando(true);
+    try {
+      avisar(await api(`/clientes/${clienteId}/negocio`, { method: 'PUT', body: { contextoNegocio: texto } }));
+      setGuardado(texto);
+    } catch (err) { avisar(err); }
+    setGuardando(false);
+  };
+
+  return (
+    <div className="negocio-layout">
+      <div className="card editor-card">
+        <form onSubmit={guardar}>
+          <textarea
+            ref={area}
+            rows={16}
+            maxLength={8000}
+            value={texto}
+            onChange={e => setTexto(e.target.value)}
+            onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); if (sucio) guardar(e); } }}
+            placeholder="Ej: Somos un almacén de barrio en Palermo. Atendemos de lunes a sábado de 8 a 21 hs. Hacemos envíos en el día dentro de 20 cuadras. Aceptamos efectivo, transferencia y Mercado Pago. Hablá cercano y con buena onda."
+          />
+          <div className="editor-footer">
+            <span className={`editor-estado ${sucio ? 'is-dirty' : ''}`}>
+              {texto.length} caracteres · el bot lo lee antes de cada respuesta
+            </span>
+            <button type="submit" className="btn btn-primary" disabled={guardando || !sucio}><Icon name="save" /> {guardando ? 'Guardando…' : 'Guardar'}</button>
+          </div>
+        </form>
+      </div>
+
+      <div className="card negocio-tips">
+        <div className="negocio-tips-header"><Icon name="sparkles" /> Tocá para agregar</div>
+        <p>Cuanto más le cuentes, mejor responde. Tocá una idea y completala.</p>
+        <div className="tips">
+          {IDEAS.map(([label, plantilla]) => (
+            <button key={label} type="button" onClick={() => agregar(plantilla)}>{label}</button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

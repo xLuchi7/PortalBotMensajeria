@@ -2,7 +2,9 @@
 
 Panel web multi-cliente del bot de WhatsApp (`../Bot_Mensajeria`). Cada Cliente (comercio) entra con sus usuarios y ve sus pedidos, artículos, chats, consultas, escalamientos e integraciones. Mismo deploy y mismo link para todos.
 
-Stack: Node 22 + Express 5 + EJS, Azure SQL vía `mssql` (sin ORM), sesiones en memoria (`express-session`). Deploy en Railway. Sin tests automatizados ni build.
+Stack: backend Node 22 + Express 5 (API JSON en `/api`), frontend React 19 + React Router 7 compilado con Vite (`client/`), Azure SQL vía `mssql` (sin ORM), sesiones en memoria (`express-session`). Deploy en Railway (un solo servicio: corre `npm run build` y después `npm start`). Sin tests automatizados.
+
+Desarrollo: `npm run dev` (Express en `PORT`, default 3100) + `npm run dev:client` (Vite en :5173, pasa `/api` y `/shopify` a Express). `client/dist` lo genera el build y no se commitea.
 
 ## Reglas fijas
 
@@ -10,18 +12,24 @@ Stack: Node 22 + Express 5 + EJS, Azure SQL vía `mssql` (sin ORM), sesiones en 
 - La base es **compartida con Bot_Mensajeria** (`Clientes`, `Articulos`, `Stock`, `Pedidos`, `DetallePedidos`, `Mensajes`, `Escalamientos`, `ConsultasArticulo/Pedido`, vista `VConsultas`). No renombrar ni borrar columnas que use el bot; el bot busca artículos por `nombre` exacto con `activo = 1`.
 - **Multi-tenant**: toda ruta de datos va bajo `/clientes/:clienteId/...` con `requireAuth` + `resolveClienteAccess` (admin entra a cualquiera, rol `cliente` solo al suyo) y **toda query filtra por `clienteId`**. `requireAdmin` para lo que solo ve el admin.
 - Queries siempre parametrizadas (`.input(...)`). Nada de concatenar valores.
-- Copy de la UI en español rioplatense (voseo). Toasts con `setFlash(req, 'success'|'warning', 'Texto En Title Case')`.
+- Copy de la UI en español rioplatense (voseo). Toasts en Title Case: la API responde `{ ok, tipo: 'success'|'warning', mensaje }` (helpers `ok`/`aviso`/`falla` en `api.js`) y el frontend lo muestra con `useAvisar()`. `setFlash` queda solo para el flujo de Shopify que navega el navegador (lo lee `/api/sesion`).
 - Sin dependencias nuevas salvo necesidad real (usar `fetch` y `crypto` nativos).
 - Commits solo cuando el usuario lo pide; mensajes en inglés.
 
 ## Mapa
 
-- `index.js`: orden de montaje importa. `shopifyRoutes.webhookRouter` va **antes** de `express.urlencoded` y la sesión (firma sobre body crudo). Después: `publicRouter`, `auth`, `shopifyRoutes.router`, `dashboard`, `usuarios`.
-- `src/routes/`: `auth.js`, `dashboard.js` (pedidos, artículos, stock, importación Excel, chats (bandeja + pausar bot + responder a mano), consultas, escalamientos, negocio, clientes), `usuarios.js`, `shopify.js`.
-- `src/services/`: un servicio por tabla/feature (`pedidoService`, `articuloService`, `importService` con jobs en memoria + polling, `flash`, `db.getPool()`). Shopify: `shopifyClient` (token + GraphQL), `shopifyAppService` (credenciales de apps en DB), `shopifyOAuthService`, `shopifySyncService`, `shopifyOrderService`, `shopifyWebhookService`, `cryptoService` (AES-GCM, clave derivada de `SESSION_SECRET`).
-- `src/views/`: una vista por página + `partials/header.ejs` (menú lateral: una sola lista `grupos` para admin y cliente, agregá ahí las páginas nuevas), `partials/bot-switch.ejs` (interruptor del bot) y `partials/footer.ejs` (`mostrarToast`, `confirmarEliminar`, validación con toasts, fetch de los interruptores). Patrón de página: `.page-head` (h1 + `.page-sub`), ayuda larga en `<details class="page-help">`, números en `.stats`.
-- `src/viewHelpers.js`: helpers de formato disponibles en todas las vistas (`numero`, `fecha`, `plata`, `iniciales`).
-- `src/icons.js`: SVGs inline genéricos (`icons.nombre`), sin logos de marcas. `public/style.css`: un solo CSS con secciones `/* ── Nombre ── */` y variables en `:root`.
+- `index.js`: orden de montaje importa. `shopifyRoutes.webhookRouter` va **antes** de los parsers y la sesión (firma sobre body crudo). Después: estáticos de `client/dist` y `public/`, `express.json`, sesión, `/api` (`routes/api.js`), `shopifyRoutes.publicRouter` (`/shopify`, `/shopify/callback`) y al final el fallback que devuelve `client/dist/index.html` para cualquier otra ruta (React resuelve la página).
+- `src/routes/api.js`: toda la API JSON (sesión/login, clientes, usuarios, negocio, artículos + importación Excel, chats + polling `/chats/novedades`, escalamientos, pedidos, consultas, integraciones/Shopify). `src/routes/shopify.js`: solo webhooks + instalación/OAuth.
+- `src/middleware/requireAuth.js`: en rutas `/api/` responde 401/403 JSON; en el resto redirige.
+- `src/services/`: un servicio por tabla/feature (`pedidoService`, `articuloService`, `chatService` (`huellaBandeja` para el tiempo real), `importService` con jobs en memoria + polling, `flash`, `db.getPool()`). Shopify: `shopifyClient` (token + GraphQL), `shopifyAppService` (credenciales de apps en DB), `shopifyOAuthService`, `shopifySyncService`, `shopifyOrderService`, `shopifyWebhookService`, `cryptoService` (AES-GCM, clave derivada de `SESSION_SECRET`). `src/viewHelpers.js`: `numero()`, lo usa `chatService`.
+- `client/src/`:
+  - `main.jsx` (router de datos + providers) y `App.jsx` (todas las rutas; `<Privada admin>` para lo que solo ve el admin).
+  - `pages/`: una por pantalla.
+  - `components/Layout.jsx`: menú lateral (lista `GRUPOS`, agregá ahí las páginas nuevas); `useCliente()` da el Cliente que se está viendo.
+  - `components/ui.jsx`: `PageHead`, `PageHelp`, `Stats`/`Stat`, `Empty`, `TablaCargando`, `ErrorCarga`, `Pagination`, `Contacto`, `useTitulo`.
+  - `components/`: `Toasts.jsx` (`useToast`, `useAvisar`), `Confirm.jsx` (`useConfirm`), `Modal.jsx` (`<dialog>` nativo), `Form.jsx` (validación con toasts), `BotSwitch.jsx`, `ShopifySync.jsx`, `ImportarExcel.jsx`.
+  - `lib/`: `api.js` (`api()` y `useApi()`), `auth.jsx`, `format.js` (`numero`, `fecha`, `plata`, `iniciales`), `icons.js` (SVGs genéricos, sin logos de marcas; se usan con `<Icon name="x" />`), `timezones.js`.
+- `client/src/styles.css`: un solo CSS con secciones `/* ── Nombre ── */` y variables en `:root`. Patrón de página: `.page-head` (h1 + `.page-sub`), ayuda larga en `PageHelp`, números en `.stats`. `public/`: favicon y plantilla de Excel.
 - `docs/SHOPIFY.md`: cómo funciona la integración con Shopify.
 
 ## Variables de entorno

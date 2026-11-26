@@ -130,6 +130,23 @@ async function actualizarContexto(id, contextoNegocio) {
     .query('UPDATE Clientes SET contextoNegocio = @contextoNegocio WHERE id = @id');
 }
 
+// Número (solo dígitos) al que Bot_Mensajeria avisa por WhatsApp cuando un chat
+// pasa a revisión humana (revisionService.alertar).
+async function obtenerTelefonoAlertas(id) {
+  const pool = await getPool();
+  const result = await pool.request().input('id', sql.Int, id).query('SELECT telefonoAlertas FROM Clientes WHERE id = @id');
+  return result.recordset[0]?.telefonoAlertas ?? null;
+}
+
+async function setTelefonoAlertas(id, telefono) {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input('id', sql.Int, id)
+    .input('telefono', sql.NVarChar(30), telefono)
+    .query('UPDATE Clientes SET telefonoAlertas = @telefono WHERE id = @id');
+}
+
 // No borramos de verdad: desactivar preserva el historial (Mensajes, Pedidos,
 // Escalamientos) y ya corta el acceso del bot y del portal, porque ambos
 // filtran por Clientes.activo = 1.
@@ -153,6 +170,8 @@ module.exports = {
   actualizarCliente,
   obtenerContexto,
   actualizarContexto,
+  obtenerTelefonoAlertas,
+  setTelefonoAlertas,
   desactivarCliente,
   activarCliente,
 };

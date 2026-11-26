@@ -3544,3 +3544,106 @@ button.chat-item.active .chat-item-numero::after {
 @media (max-width: 900px) {
   .chat-leyenda { display: none; }
 }
+
+/* ── Revisión humana ────────────────────────────────────────────────── */
+
+/* Franja arriba de todas las páginas mientras haya chats en revisión. */
+.aviso-revision {
+  display: flex; align-items: center; gap: 0.9rem;
+  margin-bottom: 1.5rem; padding: 0.85rem 1.1rem;
+  background: var(--danger); color: #fff;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--danger) 30%, transparent);
+  animation: aviso-revision-entra 0.25s ease-out;
+}
+.aviso-revision-icono {
+  display: grid; place-items: center; flex: none;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  animation: aviso-revision-pulso 1.6s ease-in-out infinite;
+}
+.aviso-revision-icono .icon { width: 19px; height: 19px; }
+.aviso-revision-texto { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; flex: 1; }
+.aviso-revision-texto strong { font-size: 0.95rem; }
+.aviso-revision-texto span { font-size: 0.82rem; opacity: 0.92; overflow: hidden; text-overflow: ellipsis; }
+.aviso-revision-btn { flex: none; background: #fff; color: #991b1b; border-color: #fff; font-weight: 700; }
+.aviso-revision-btn:hover { background: #fef2f2; color: #7f1d1d; }
+@keyframes aviso-revision-entra { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes aviso-revision-pulso { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.45); } 50% { box-shadow: 0 0 0 7px rgba(255, 255, 255, 0); } }
+@media (max-width: 640px) {
+  .aviso-revision { flex-wrap: wrap; }
+  .aviso-revision-btn { width: 100%; justify-content: center; }
+}
+
+.badge-revision { background: var(--danger); color: #fff; font-weight: 700; }
+.chat-filtros .chip-revision { --c: #b91c1c; --c-soft: var(--danger-soft); }
+.chat-filtros .chip-revision::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+
+/* Dentro de la conversación. */
+.chat-revision {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.7rem 1.1rem;
+  background: #fff1f2; color: #991b1b;
+  border-bottom: 2px solid var(--danger);
+  font-size: 0.82rem;
+}
+.chat-revision > .icon { width: 18px; height: 18px; flex: none; color: var(--danger); }
+.chat-revision-texto { display: flex; flex-direction: column; gap: 0.1rem; flex: 1; min-width: 0; }
+.chat-revision-texto strong { font-size: 0.88rem; }
+.chat-revision .btn { flex: none; }
+
+/* Mi Negocio: número para los avisos. */
+.alertas-card { padding: 1.25rem 1.4rem; display: flex; flex-direction: column; gap: 0.85rem; }
+.alertas-ayuda, .alertas-nota { margin: 0; font-size: 0.88rem; color: var(--text-muted); line-height: 1.5; }
+.alertas-ayuda { color: inherit; }
+.alertas-nota { font-size: 0.8rem; }
+.alertas-form { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.alertas-form input { flex: 1; min-width: 220px; max-width: 320px; }
+
+/* ── Logs (admin) ───────────────────────────────────────────────────── */
+
+.logs-filtros { display: flex; flex-wrap: wrap; gap: 0.6rem; padding: 0.85rem 1rem; margin-bottom: 1rem; align-items: center; }
+.logs-busqueda { display: flex; align-items: center; gap: 0.45rem; flex: 1; min-width: 240px; }
+.logs-busqueda .icon { width: 16px; height: 16px; color: var(--text-muted); }
+.logs-busqueda input { flex: 1; }
+.logs-filtros select { width: auto; }
+.tabla-logs td { vertical-align: top; font-size: 0.82rem; }
+.log-fecha { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.log-evento { font-size: 0.78rem; font-weight: 600; }
+.log-origen { display: block; color: var(--text-muted); font-size: 0.72rem; margin-top: 0.15rem; }
+.log-quien { display: flex; flex-direction: column; gap: 0.1rem; min-width: 140px; }
+.log-quien small { color: var(--text-muted); font-size: 0.74rem; }
+.log-detalle { max-width: 520px; word-break: break-word; }
+.log-detalle summary { cursor: pointer; }
+.log-detalle pre { margin: 0.4rem 0 0; padding: 0.6rem; background: #f8fafc; border-radius: 6px; font-size: 0.74rem; white-space: pre-wrap; max-height: 320px; overflow: auto; }
+.log-nivel-info { background: #f1f5f9; color: #475569; }
+.log-nivel-warn { background: var(--warning-soft); color: #92400e; }
+.log-nivel-error { background: var(--danger-soft); color: #991b1b; }
+.tabla-logs tr.log-error td { background: #fff7f7; }
+button.log-evento { all: unset; cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; font-weight: 600; color: var(--primary); }
+button.log-evento:hover { text-decoration: underline; }
+.log-consumo { display: flex; flex-direction: column; gap: 0.1rem; min-width: 150px; font-size: 0.76rem; }
+.log-consumo code { font-size: 0.72rem; color: var(--text-muted); }
+.log-consumo small { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.log-consumo strong { color: #166534; font-variant-numeric: tabular-nums; }
+
+/* ── Atención Humana ── */
+/* Banner verde del chat ya atendido (mismo formato que .chat-revision). */
+.chat-revision.chat-atendido { background: var(--success-soft); color: #166534; border-bottom-color: var(--success); }
+.chat-revision.chat-atendido > .icon { color: var(--success); }
+
+/* ── Reclamos (bandeja) ── */
+/* Reclamos del chat abierto, arriba del historial. */
+.chat-reclamos { display: flex; flex-direction: column; max-height: 11rem; overflow-y: auto; border-bottom: 2px solid var(--danger); }
+.chat-reclamo {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.6rem 1.1rem; font-size: 0.82rem;
+  background: #fff1f2; color: #991b1b;
+}
+.chat-reclamo + .chat-reclamo { border-top: 1px solid #fecdd3; }
+.chat-reclamo > .icon { width: 18px; height: 18px; flex: none; color: var(--danger); }
+.chat-reclamo.is-en_proceso { background: var(--info-soft); color: #1e40af; }
+.chat-reclamo.is-en_proceso > .icon { color: var(--info); }
+.chat-reclamo.is-resuelto { background: var(--success-soft); color: #166534; }
+.chat-reclamo.is-resuelto > .icon { color: var(--success); }
+.chat-reclamo .badge-select, .chat-reclamo .badge { flex: none; }

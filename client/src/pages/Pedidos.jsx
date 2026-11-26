@@ -6,6 +6,7 @@ import { CeldaFecha, Contacto, Empty, ErrorCarga, PageHead, PageHelp, Pagination
 import { useAvisar } from '../components/Toasts.jsx';
 import { useConfirm } from '../components/Confirm.jsx';
 import { api, useApi } from '../lib/api.js';
+import { useEnVivo } from '../lib/eventos.jsx';
 import { fecha, plata, plural } from '../lib/format.js';
 
 const ESTADOS_FINALES = ['entregado', 'cancelado', 'solucionado'];
@@ -37,6 +38,8 @@ export default function Pedidos() {
   const { clienteId } = useParams();
   const [params] = useSearchParams();
   const { data, error, loading, reload, setData } = useApi(`/clientes/${clienteId}/pedidos?page=${paginaDe(params)}`);
+  // Pedidos nuevos del bot o cambios que llegan de Shopify (lib/eventos.jsx).
+  useEnVivo(['pedido'], reload);
   const avisar = useAvisar();
   const confirmar = useConfirm();
   const [notas, setNotas] = useState(null); // { id, texto }

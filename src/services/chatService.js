@@ -1,4 +1,4 @@
-const { getPool, sql } = require('./db');
+const { getPool, ejecutar, sql } = require('./db');
 const { numero: formatearNumero } = require('../viewHelpers');
 
 const PAGE_SIZE = 25;
@@ -10,6 +10,8 @@ const VENTANA_MINUTOS = 24 * 60;
 // hacer un Pedido, después si buscó Artículos que tenemos (intención de compra), y
 // si no, es solo una consulta.
 const ESTADOS = {
+  // El bot se pausó solo porque pidieron una persona o insultaron (Bot_Mensajeria, revisionService).
+  revision: { label: 'Humano Solicitado', clase: 'badge-revision' },
   reclamo: { label: 'Reclamo Abierto', clase: 'badge-danger' },
   pedido: { label: 'Pedido Realizado', clase: 'badge-success' },
   intencion: { label: 'Intención De Compra', clase: 'badge-info' },
@@ -33,8 +35,10 @@ const CHATS_CTE = `
       CAST(SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria AS date) AS hoyLocal,
       CAST(ISNULL(ch.botActivo, 1) AS bit) AS botActivo,
       ch.nombre, ch.nombrePerfil,
+      CAST(ISNULL(ch.revisionHumana, 0) AS bit) AS revisionHumana, ch.revisionHumanaMotivo, ch.revisionHumanaEn,
       CASE
-        WHEN EXISTS (SELECT 1 FROM Escalamientos e WHERE e.clienteId = @clienteId AND e.userId = u.userId AND e.estado <> 'resuelto') THEN 'reclamo'
+        WHEN ch.revisionHumana = 1 THEN 'revision'
+        WHEN EXISTS (SELECT 1 FROM Escalamientos e WHERE e.clienteId = @clienteId AND e.userId = u.userId AND e.estado <> 'resuelto' AND e.motivo NOT LIKE '[[]Revisión humana]%') THEN 'reclamo'
         WHEN EXISTS (SELECT 1 FROM Pedidos p WHERE p.clienteId = @clienteId AND p.userId = u.userId) THEN 'pedido'
         WHEN EXISTS (SELECT 1 FROM ConsultasArticulo ca WHERE ca.clienteId = @clienteId AND ca.userId = u.userId AND ca.encontrado = 1) THEN 'intencion'
         ELSE 'consulta'
@@ -103,6 +107,7 @@ async function listarChats(clienteId, { page = 1, q, estado, bot } = {}) {
         SELECT
           COUNT(*) AS total,
           SUM(CASE WHEN botActivo = 0 THEN 1 ELSE 0 END) AS pausados,
+          SUM(CASE WHEN estado = 'revision' THEN 1 ELSE 0 END) AS revision,
           SUM(CASE WHEN estado = 'reclamo' THEN 1 ELSE 0 END) AS reclamo,
           SUM(CASE WHEN estado = 'pedido' THEN 1 ELSE 0 END) AS pedido,
           SUM(CASE WHEN estado = 'intencion' THEN 1 ELSE 0 END) AS intencion,
@@ -130,6 +135,7 @@ async function listarChats(clienteId, { page = 1, q, estado, bot } = {}) {
     resumen: {
       total: resumen.total || 0,
       pausados: resumen.pausados || 0,
+      revision: resumen.revision || 0,
       reclamo: resumen.reclamo || 0,
       pedido: resumen.pedido || 0,
       intencion: resumen.intencion || 0,
@@ -168,6 +174,8 @@ async function obtenerChat(clienteId, userId) {
       .input('userId', sql.NVarChar, userId)
       .query(`${CHATS_CTE}
         SELECT ch.userId, ch.cantidad, ch.platform, ch.botActivo, ch.estado, ch.nombre, ch.nombrePerfil,
+          ch.revisionHumana, ch.revisionHumanaMotivo,
+          FORMAT(ch.revisionHumanaEn AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy HH:mm') AS revisionHumanaFecha,
           x.botActualizadoPor,
           FORMAT(x.botActualizadoEn AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy HH:mm') AS botActualizadoEn,
           (SELECT DATEDIFF(MINUTE, MAX(mu.createdAt), SYSUTCDATETIME()) FROM Mensajes mu
@@ -213,7 +221,8 @@ async function setBotChat(clienteId, userId, activo, actualizadoPor) {
         USING (SELECT @clienteId AS clienteId, @userId AS userId) AS s
           ON t.clienteId = s.clienteId AND t.userId = s.userId
         WHEN MATCHED THEN
-          UPDATE SET botActivo = @activo, botActualizadoEn = SYSUTCDATETIME(), botActualizadoPor = @por
+          UPDATE SET botActivo = @activo, botActualizadoEn = SYSUTCDATETIME(), botActualizadoPor = @por,
+            revisionHumana = CASE WHEN @activo = 1 THEN 0 ELSE revisionHumana END
         WHEN NOT MATCHED THEN
           INSERT (clienteId, userId, botActivo, botActualizadoEn, botActualizadoPor)
           VALUES (@clienteId, @userId, @activo, SYSUTCDATETIME(), @por);
@@ -260,10 +269,104 @@ async function huellaBandeja(clienteId) {
     .query(`
       SELECT
         (SELECT MAX(id) FROM Mensajes WHERE clienteId = @clienteId) AS ultimoId,
-        (SELECT COUNT(*) FROM Chats WHERE clienteId = @clienteId AND botActivo = 0) AS pausados
+        (SELECT COUNT(*) FROM Chats WHERE clienteId = @clienteId AND botActivo = 0) AS pausados,
+        (SELECT COUNT(*) FROM Chats WHERE clienteId = @clienteId AND revisionHumana = 1) AS revision
     `);
   const r = result.recordset[0] || {};
-  return `${r.ultimoId || 0}-${r.pausados || 0}`;
+  return `${r.ultimoId || 0}-${r.pausados || 0}-${r.revision || 0}`;
 }
 
-module.exports = { ESTADOS, listarChats, obtenerChat, setBotChat, setNombreChat, huellaBandeja };
+// "Humano Solicitado" (Reclamos > Humano Solicitado): Pendiente mientras
+// Chats.revisionHumana = 1, Atendido cuando alguien lo marca, le responde desde
+// el portal o reactiva el bot. El bot sigue pausado al atenderlo: se reactiva aparte.
+const ESTADOS_HUMANO = ['pendiente', 'atendido'];
+
+// Devuelve true si cambió (false = no tenía un pedido de persona o ya estaba así).
+async function setEstadoHumano(clienteId, userId, estado, por) {
+  if (!ESTADOS_HUMANO.includes(estado)) return false;
+  const r = await ejecutar('dbo.usp_Portal_HumanoSolicitadoEstado', {
+    clienteId: [sql.Int, clienteId],
+    userId: [sql.NVarChar(100), userId],
+    estado: [sql.NVarChar(20), estado],
+    por: [sql.NVarChar(255), por ? String(por).slice(0, 255) : null],
+  });
+  return (r.recordset[0]?.cambiados || 0) > 0;
+}
+
+function atenderRevision(clienteId, userId, por) {
+  return setEstadoHumano(clienteId, userId, 'atendido', por);
+}
+
+// Etiqueta de cada fila en la bandeja de Atención Humana (mismo formato que ESTADOS).
+const ESTADOS_HUMANO_INFO = {
+  pendiente: { label: 'Pendiente', clase: 'badge-revision' },
+  atendido: { label: 'Atendido', clase: 'badge-success' },
+};
+
+// Bandeja de Atención Humana: las filas salen con la misma forma que listarChats
+// para que el frontend use la misma lista y la misma conversación.
+async function listarHumanoSolicitado(clienteId, { page = 1, estado, q } = {}) {
+  const f = filtrosDe({ q });
+  const r = await ejecutar('dbo.usp_Portal_HumanoSolicitadoListar', {
+    clienteId: [sql.Int, clienteId],
+    estado: [sql.NVarChar(20), ESTADOS_HUMANO.includes(estado) ? estado : null],
+    q: [sql.NVarChar(60), f.q],
+    qDigitos: [sql.NVarChar(60), f.qDigitos],
+    page: [sql.Int, page],
+    pageSize: [sql.Int, PAGE_SIZE],
+  });
+  const totales = r.recordsets[0][0] || {};
+  const rows = r.recordsets[1].map(row => ({
+    ...row,
+    numero: formatearNumero(row.userId),
+    nombreVisible: row.nombre || row.nombrePerfil || null,
+    fechaCorta: row.ultimaFechaLocal ? fechaCorta(row.ultimaFechaLocal, row.hoyLocal) : '',
+    estadoInfo: ESTADOS_HUMANO_INFO[row.estado],
+  }));
+  return {
+    rows,
+    resumen: { total: totales.total || 0, pendiente: totales.pendientes || 0, atendido: totales.atendidos || 0 },
+    estados: ESTADOS_HUMANO_INFO,
+    page,
+    totalPages: Math.max(1, Math.ceil((rows[0]?.totalFiltrado || 0) / PAGE_SIZE)),
+  };
+}
+
+// Bandeja de Reclamos: un chat por número con sus reclamos (Escalamientos). El
+// estado del chat es el de su reclamo más atrasado. Misma forma que listarChats.
+const ESTADOS_RECLAMO_INFO = {
+  pendiente: { label: 'Pendiente', clase: 'badge-danger' },
+  en_proceso: { label: 'En Proceso', clase: 'badge-info' },
+  resuelto: { label: 'Resuelto', clase: 'badge-success' },
+};
+
+async function listarReclamosBandeja(clienteId, { page = 1, estado, q } = {}) {
+  const f = filtrosDe({ q });
+  const r = await ejecutar('dbo.usp_Portal_ReclamosBandeja', {
+    clienteId: [sql.Int, clienteId],
+    estado: [sql.NVarChar(20), ESTADOS_RECLAMO_INFO[estado] ? estado : null],
+    q: [sql.NVarChar(60), f.q],
+    qDigitos: [sql.NVarChar(60), f.qDigitos],
+    page: [sql.Int, page],
+    pageSize: [sql.Int, PAGE_SIZE],
+  });
+  const [totalesRows, filas, reclamos] = r.recordsets;
+  const t = totalesRows[0] || {};
+  const rows = filas.map(row => ({
+    ...row,
+    numero: formatearNumero(row.userId),
+    nombreVisible: row.nombre || row.nombrePerfil || null,
+    fechaCorta: row.ultimaFechaLocal ? fechaCorta(row.ultimaFechaLocal, row.hoyLocal) : '',
+    estadoInfo: ESTADOS_RECLAMO_INFO[row.estado],
+    listaReclamos: reclamos.filter(e => e.userId === row.userId),
+  }));
+  return {
+    rows,
+    resumen: { total: t.total || 0, pendiente: t.pendiente || 0, en_proceso: t.en_proceso || 0, resuelto: t.resuelto || 0 },
+    estados: ESTADOS_RECLAMO_INFO,
+    page,
+    totalPages: Math.max(1, Math.ceil((rows[0]?.totalFiltrado || 0) / PAGE_SIZE)),
+  };
+}
+
+module.exports = { ESTADOS, listarChats, obtenerChat, setBotChat, setNombreChat, atenderRevision, setEstadoHumano, listarHumanoSolicitado, listarReclamosBandeja, huellaBandeja };

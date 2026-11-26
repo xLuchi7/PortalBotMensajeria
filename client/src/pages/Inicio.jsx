@@ -3,7 +3,8 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
 import { ErrorCarga, useTitulo } from '../components/ui.jsx';
 import { useCliente } from '../components/Layout.jsx';
-import { api, useApi } from '../lib/api.js';
+import { useApi } from '../lib/api.js';
+import { TIPOS_EVENTO, useEnVivo } from '../lib/eventos.jsx';
 import { iniciales, numero, plata, plural, tono } from '../lib/format.js';
 
 // Pantalla de entrada del Cliente: qué hizo el bot por su negocio, qué necesita
@@ -15,7 +16,6 @@ const DIAS_CALOR = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const DIAS_CALOR_LARGO = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
 const ESTADO_PEDIDO = { pendiente: 'Pendiente', confirmado: 'Confirmado', entregado: 'Entregado', cancelado: 'Cancelado', reclamado: 'Reclamado', solucionado: 'Solucionado' };
 const MINUTOS_POR_RESPUESTA = 1; // estimación conservadora para "tiempo ahorrado"
-const POLL_MS = 10000;
 
 const entero = n => Math.round(n).toLocaleString('es-AR');
 
@@ -44,7 +44,7 @@ export default function Inicio() {
   const { cliente } = useCliente();
   const { data, error, reload } = useApi(`/clientes/${clienteId}/inicio?dias=${dias}`);
   const base = `/clientes/${clienteId}`;
-  useEnVivo(clienteId, reload);
+  useResumenEnVivo(reload);
   useAhora(60000); // re-render cada minuto para que "hace X min" no quede viejo
 
   if (error && !data) return <ErrorCarga error={error} onReintentar={reload} />;
@@ -108,28 +108,11 @@ export default function Inicio() {
 
 // ── Tiempo real ─────────────────────────────────────────────────────────────
 
-// Pregunta cada pocos segundos si hubo mensajes nuevos (la misma consulta
-// chiquita que usa Chats) y, si los hubo, recarga el resumen.
-function useEnVivo(clienteId, reload) {
-  const recargar = useRef(reload);
-  recargar.current = reload;
-  useEffect(() => {
-    let huella = null;
-    let timer;
-    let vivo = true;
-    const revisar = async () => {
-      if (!document.hidden) {
-        try {
-          const r = await api(`/clientes/${clienteId}/chats/novedades`);
-          if (vivo && huella && r.huella !== huella) recargar.current();
-          huella = r.huella;
-        } catch { /* sin red: se reintenta en la próxima vuelta */ }
-      }
-      if (vivo) timer = setTimeout(revisar, POLL_MS);
-    };
-    revisar();
-    return () => { vivo = false; clearTimeout(timer); };
-  }, [clienteId]);
+// Recarga el resumen cuando el servidor avisa que algo cambió (lib/eventos.jsx).
+// Espera unos segundos para juntar en una sola recarga los avisos que llegan
+// seguidos (el mensaje del cliente y la respuesta del bot, por ejemplo).
+function useResumenEnVivo(reload) {
+  useEnVivo(TIPOS_EVENTO, reload, { esperaMs: 3000 });
 }
 
 function useAhora(cadaMs) {
@@ -630,7 +613,7 @@ function Atencion({ atencion, base, botApagado }) {
 
           {reclamos.total > 0 && (
             <div className="atencion-grupo">
-              <Link to={`${base}/escalamientos`} className="atencion-titulo tono-rojo">
+              <Link to={`${base}/reclamos`} className="atencion-titulo tono-rojo">
                 <span className="atencion-icono"><Icon name="alertTriangle" /></span>
                 <span><strong>{reclamos.total} {plural(reclamos.total, 'reclamo abierto', 'reclamos abiertos')}</strong></span>
                 <Icon name="arrowRight" className="atencion-flecha" />
@@ -737,7 +720,7 @@ function Actividad({ items, base }) {
               texto = <><strong>{quien}</strong> hizo el pedido <strong>#{a.id}</strong>{a.monto ? <> por <strong>{plata(a.monto)}</strong></> : null}
                 <span className={`badge badge-${a.detalle} actividad-badge`}>{ESTADO_PEDIDO[a.detalle] || a.detalle}</span></>;
             } else if (a.tipo === 'reclamo') {
-              icono = 'alertTriangle'; tonoItem = 'rojo'; link = `${base}/escalamientos`;
+              icono = 'alertTriangle'; tonoItem = 'rojo'; link = `${base}/reclamos`;
               texto = <><strong>{quien}</strong> hizo un reclamo{a.detalle ? <>: <em>{a.detalle}</em></> : null}</>;
             } else if (a.tipo === 'consulta') {
               icono = 'search'; link = `${base}/consultas`;

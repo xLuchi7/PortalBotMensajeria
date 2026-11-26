@@ -1,9 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Navigate, Outlet, useLocation, useMatch } from 'react-router-dom';
 import Icon from './Icon.jsx';
 import { api } from '../lib/api.js';
+import { useToast } from './Toasts.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { iniciales } from '../lib/format.js';
+import { iniciales, numero } from '../lib/format.js';
+import { EventosContext, TIPOS_EVENTO, useEnVivo, useFuenteEventos } from '../lib/eventos.jsx';
 
 // Un solo menú para admin y cliente: el admin lo ve cuando entra a un Cliente
 // puntual, el cliente siempre con el suyo. Para sumar una página, agregala acá
@@ -15,7 +17,8 @@ const GRUPOS = [
   ] },
   { titulo: 'Atención', items: [
     { ruta: 'chats', label: 'Chats', icono: 'message', contador: 'chats', ayuda: 'esperan tu respuesta' },
-    { ruta: 'escalamientos', label: 'Escalamientos', icono: 'alertTriangle', contador: 'escalamientos', ayuda: 'sin resolver', alerta: true },
+    { ruta: 'atencion-humana', label: 'Atención Humana', icono: 'user', contador: 'revision', ayuda: 'piden hablar con una persona', alerta: true },
+    { ruta: 'reclamos', label: 'Reclamos', icono: 'alertTriangle', contador: 'escalamientos', ayuda: 'sin resolver', alerta: true },
     { ruta: 'consultas', label: 'Consultas', icono: 'search' },
   ] },
   { titulo: 'Ventas', items: [
@@ -32,7 +35,6 @@ const ITEMS = GRUPOS.flatMap(g => g.items);
 // En el celular el menú pasa a una barra abajo: estas cuatro y "Más" con el resto.
 const TABBAR = ['inicio', 'chats', 'pedidos', 'articulos'];
 
-const CONTADORES_MS = 30000;
 const CLAVE_COMPACTO = 'portal.menuCompacto';
 
 // Datos del Cliente que se está viendo (nombre y estado del bot): los usan el
@@ -44,27 +46,46 @@ export function useCliente() {
   return useContext(ClienteContext);
 }
 
-// Números al lado de Chats, Escalamientos y Pedidos. Se piden al entrar, al
-// cambiar de página y cada 30 segundos mientras la pestaña está a la vista.
-function useContadores(clienteId, pathname) {
+// Números al lado de Chats, Reclamos y Pedidos (y los chats en revisión
+// humana). Se piden al entrar, al cambiar de página y cada vez que el servidor
+// avisa que algo cambió (lib/eventos.jsx).
+function useContadores(clienteId, pathname, fuente) {
   const [contadores, setContadores] = useState(null);
+  const actual = useRef(clienteId);
+  actual.current = clienteId;
+  const pedir = useCallback(async () => {
+    if (!clienteId) return;
+    try {
+      const c = await api(`/clientes/${clienteId}/contadores`);
+      if (actual.current === clienteId) setContadores(c);
+    } catch { /* sin red: se reintenta con el próximo aviso */ }
+  }, [clienteId]);
   useEffect(() => {
-    if (!clienteId) { setContadores(null); return undefined; }
-    let vivo = true;
-    let timer;
-    const pedir = async () => {
-      if (!document.hidden) {
-        try {
-          const c = await api(`/clientes/${clienteId}/contadores`);
-          if (vivo) setContadores(c);
-        } catch { /* sin red: se reintenta en la próxima vuelta */ }
-      }
-      if (vivo) timer = setTimeout(pedir, CONTADORES_MS);
-    };
+    if (!clienteId) { setContadores(null); return; }
     pedir();
-    return () => { vivo = false; clearTimeout(timer); };
-  }, [clienteId, pathname]);
+  }, [clienteId, pathname, pedir]);
+  useEnVivo(TIPOS_EVENTO, pedir, { fuente });
   return contadores;
+}
+
+// Revisión humana: cuando aparece un chat nuevo en revisión avisa con un toast,
+// y mientras haya alguno el título de la pestaña lo muestra (se ve aunque estés
+// en otra pestaña).
+function useAvisoRevision(contadores) {
+  const toast = useToast();
+  const anterior = useRef(null);
+  const n = contadores?.revision || 0;
+  useEffect(() => {
+    if (contadores == null) return;
+    if (anterior.current != null && n > anterior.current) {
+      toast('warning', n - anterior.current === 1 ? 'Un Chat Pidió Hablar Con Una Persona' : `${n - anterior.current} Chats Pidieron Hablar Con Una Persona`);
+    }
+    anterior.current = n;
+  }, [contadores, n, toast]);
+  useEffect(() => {
+    const limpio = document.title.replace(/^\(\d+\) ⚠ /, '');
+    document.title = n ? `(${n}) ⚠ ${limpio}` : limpio;
+  });
 }
 
 // Menú angosto (solo íconos). Se recuerda en este navegador.
@@ -114,14 +135,17 @@ export default function Layout() {
   // Al cambiar de página, arriba de todo (como cuando se recargaba) y se cierra "Más".
   useEffect(() => { window.scrollTo(0, 0); setMasAbierto(false); }, [location.pathname]);
 
-  const contadores = useContadores(clienteId, location.pathname);
+  const fuenteEventos = useFuenteEventos(clienteId);
+  const contadores = useContadores(clienteId, location.pathname, fuenteEventos);
+  useAvisoRevision(contadores);
 
   // Un usuario cliente solo entra a su propio negocio.
   if (!esAdmin && idEnRuta && idEnRuta !== usuario.clienteId) return <Navigate to="/" replace />;
 
   const enAdmin = esAdmin && !idEnRuta;
   const base = clienteId ? `/clientes/${clienteId}` : null;
-  const numero = i => (i.contador && contadores ? contadores[i.contador] : 0);
+  // `contador` puede ser una clave o varias (se suman).
+  const numero = i => (i.contador && contadores ? [].concat(i.contador).reduce((s, k) => s + (contadores[k] || 0), 0) : 0);
   const botOn = cliente?.botActivo !== false;
   const nombreNegocio = cliente?.razonSocial || (esAdmin ? null : usuario.razonSocial);
 
@@ -167,6 +191,9 @@ export default function Layout() {
                 <NavLink to="/usuarios" data-tip="Usuarios">
                   <span className="sidebar-icono"><Icon name="users" /></span><span className="label">Usuarios</span>
                 </NavLink>
+                <NavLink to="/logs" data-tip="Logs">
+                  <span className="sidebar-icono"><Icon name="list" /></span><span className="label">Logs</span>
+                </NavLink>
               </nav>
             </div>
           )}
@@ -210,7 +237,8 @@ export default function Layout() {
         </aside>
 
         <main className="main" key={location.pathname}>
-          <Outlet />
+          {base && <AvisoRevision base={base} contadores={contadores} />}
+          <EventosContext.Provider value={fuenteEventos}><Outlet /></EventosContext.Provider>
         </main>
 
         {clienteId && (
@@ -219,6 +247,32 @@ export default function Layout() {
         )}
       </div>
     </ClienteContext.Provider>
+  );
+}
+
+// ── Aviso de revisión humana ────────────────────────────────────────────────
+
+// Franja arriba de cada página mientras haya chats donde el bot se pausó porque
+// pidieron una persona o insultaron. Con uno solo lleva directo a ese chat.
+function AvisoRevision({ base, contadores }) {
+  const n = contadores?.revision || 0;
+  if (!n) return null;
+  const chats = contadores.revisionChats || [];
+  const unico = n === 1 && chats[0];
+  const destino = unico ? `${base}/atencion-humana?chat=${encodeURIComponent(chats[0].userId)}` : `${base}/atencion-humana`;
+  return (
+    <div className="aviso-revision" role="alert">
+      <span className="aviso-revision-icono"><Icon name="alertTriangle" /></span>
+      <div className="aviso-revision-texto">
+        <strong>{n === 1 ? 'Un chat pidió hablar con una persona' : `${n} chats pidieron hablar con una persona`}</strong>
+        <span>
+          {unico
+            ? `${chats[0].nombre || numero(chats[0].userId)}: ${chats[0].motivo || 'pidió hablar con una persona'}. El bot está pausado ahí.`
+            : 'Pidieron hablar con una persona o insultaron. El bot está pausado en esos chats.'}
+        </span>
+      </div>
+      <Link to={destino} className="btn btn-sm aviso-revision-btn">{unico ? 'Ir al chat' : 'Ver chats'} <Icon name="arrowRight" /></Link>
+    </div>
   );
 }
 

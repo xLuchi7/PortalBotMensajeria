@@ -1,6 +1,7 @@
 // API JSON del portal: la usa el frontend en React (client/). Cada ruta hace lo
 // mismo que hacía la página EJS equivalente; en vez de redirect + toast,
 // responde { ok, tipo, mensaje } y el frontend muestra el toast.
+const crypto = require('crypto');
 const express = require('express');
 const multer = require('multer');
 const config = require('../config');
@@ -22,8 +23,58 @@ const shopifyOAuth = require('../services/shopifyOAuthService');
 const shopifySync = require('../services/shopifySyncService');
 const shopifyOrders = require('../services/shopifyOrderService');
 const avisos = require('../services/avisoService');
+const logs = require('../services/logService');
+const eventos = require('../services/eventosService');
 
 const router = express.Router();
+
+// Logs de la API:
+// - Todo lo que se loguee durante un request (incluidos los console.error de
+//   cualquier servicio) queda con el Cliente, el chat y el usuario del request.
+// - Cada request queda registrado con método, ruta, status, duración, IP y (en
+//   POST/PUT/DELETE) el body, sin contraseñas ni tokens. Se saltean solo los
+//   pedidos automáticos de actualización (polling) para no llenar la tabla.
+const SIN_LOG = /^\/(sesion|logs|clientes\/\d+\/(contadores|eventos|chats\/novedades|importar\/[^/]+|shopify\/sync\/[^/]+))$/;
+const CAMPOS_SECRETOS = /pass|contrase|token|secret|clave|apikey|api_key/i;
+
+function bodyParaLog(body) {
+  if (!body || typeof body !== 'object' || !Object.keys(body).length) return undefined;
+  const limpio = {};
+  for (const [k, v] of Object.entries(body)) {
+    limpio[k] = CAMPOS_SECRETOS.test(k) ? '***' : typeof v === 'string' && v.length > 2000 ? `${v.slice(0, 2000)}…` : v;
+  }
+  return limpio;
+}
+
+router.use((req, res, next) => {
+  const ruta = req.path;
+  logs.conContexto({
+    get clienteId() { return req.clienteId ?? (parseInt(/^\/clientes\/(\d+)/.exec(ruta)?.[1], 10) || null); },
+    get userId() { const m = /\/chats\/([^/]+)/.exec(ruta); return m && m[1] !== 'novedades' ? decodeURIComponent(m[1]) : null; },
+    get usuario() { return req.session?.usuario?.email ?? null; },
+  }, () => {
+    if (req.method !== 'GET' || !SIN_LOG.test(ruta)) {
+      const inicio = Date.now();
+      res.on('finish', () => {
+        // Los avisos del bot (uno por mensaje) solo se loguean si fallan.
+        if (ruta === '/interno/eventos' && res.statusCode < 400) return;
+        const nivel = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
+        logs.registrar(nivel, `api_${req.method.toLowerCase()}`, {
+          duracionMs: Date.now() - inicio,
+          detalle: {
+            ruta: req.originalUrl,
+            status: res.statusCode,
+            ip: req.ip,
+            navegador: req.get('user-agent')?.slice(0, 200) ?? null,
+            body: req.method === 'GET' ? undefined : bodyParaLog(req.body),
+            archivo: req.file ? { nombre: req.file.originalname, bytes: req.file.size } : undefined,
+          },
+        });
+      });
+    }
+    next();
+  });
+});
 const uploadExcel = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // Envuelve un handler async: cualquier error inesperado termina en el handler
@@ -65,7 +116,11 @@ router.post('/login', h(async (req, res) => {
   if (!email || !password) return falla(res, 400, 'Completá Email Y Contraseña');
   try {
     const usuario = await usuarios.autenticar(email, password);
-    if (!usuario) return falla(res, 401, 'Email o contraseña incorrectos.');
+    if (!usuario) {
+      logs.warn('login_fallido', { usuario: email, detalle: { ip: req.ip } });
+      return falla(res, 401, 'Email o contraseña incorrectos.');
+    }
+    logs.info('login', { usuario: usuario.email, clienteId: usuario.clienteId ?? null, detalle: { rol: usuario.rol, ip: req.ip } });
     // Sesión nueva al loguearse (evita fijación de sesión); se conserva la
     // tienda de Shopify pendiente si vino desde el link de instalación.
     const shopifyPendiente = req.session.shopifyPendiente;
@@ -82,11 +137,58 @@ router.post('/login', h(async (req, res) => {
 }));
 
 router.post('/logout', (req, res) => {
+  if (req.session.usuario) logs.info('logout', { usuario: req.session.usuario.email });
   req.session.destroy(() => res.json({ ok: true }));
+});
+
+// ── Tiempo real (eventos) ───────────────────────────────────────────────────
+
+// Bot_Mensajeria avisa acá cuando escribe algo en la base (mensaje nuevo,
+// reclamo, pedido, revisión humana) y el portal se lo pasa a las pestañas
+// abiertas de ese Cliente. Usa el mismo token compartido que /portal/* del bot.
+function tokenDelBot(req) {
+  const esperado = config.bot.apiToken;
+  const recibido = (req.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!esperado || !recibido) return false;
+  const a = Buffer.from(esperado);
+  const b = Buffer.from(recibido);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+router.post('/interno/eventos', (req, res) => {
+  if (!config.bot.apiToken) return falla(res, 503, 'Falta Configurar BOT_API_TOKEN');
+  if (!tokenDelBot(req)) return falla(res, 401, 'No Autorizado');
+  const clienteId = parseInt(req.body?.clienteId, 10);
+  const tipo = req.body?.tipo;
+  if (!clienteId || !eventos.TIPOS.has(tipo)) return falla(res, 400, 'Evento Inválido');
+  const userId = typeof req.body.userId === 'string' ? req.body.userId.slice(0, 100) : undefined;
+  eventos.emitir(clienteId, tipo, { userId });
+  res.json({ ok: true });
 });
 
 // De acá para abajo todo requiere login.
 router.use(requireAuth);
+
+// Cambios hechos desde el portal: se avisan a las otras pestañas y usuarios del
+// mismo Cliente (lo que escribe el bot lo avisa el bot).
+const EVENTO_POR_SECCION = { chats: 'chat', escalamientos: 'escalamiento', 'humano-solicitado': 'revision', pedidos: 'pedido' };
+router.use((req, res, next) => {
+  if (req.method === 'GET') return next();
+  const m = /^\/clientes\/(\d+)\/([^/]+)(?:\/([^/]+))?/.exec(req.path);
+  const tipo = m && EVENTO_POR_SECCION[m[2]];
+  if (tipo) {
+    const conUsuario = m[2] === 'chats' || m[2] === 'humano-solicitado';
+    let userId;
+    try { userId = conUsuario && m[3] ? decodeURIComponent(m[3]) : undefined; } catch { /* path mal armado */ }
+    res.on('finish', () => { if (res.statusCode < 400) eventos.emitir(m[1], tipo, { userId }); });
+  }
+  next();
+});
+
+// El navegador queda escuchando acá (EventSource). Ver eventosService.
+router.get('/clientes/:clienteId/eventos', resolveClienteAccess, (req, res) => {
+  eventos.suscribir(req.clienteId, req, res);
+});
 
 // ── Admin: Clientes ─────────────────────────────────────────────────────────
 
@@ -228,12 +330,24 @@ router.delete('/usuarios/:id', requireAdmin, h(async (req, res) => {
 // ── Mi Negocio ──────────────────────────────────────────────────────────────
 
 router.get('/clientes/:clienteId/negocio', resolveClienteAccess, h(async (req, res) => {
-  res.json({ contexto: (await clientes.obtenerContexto(req.clienteId)) || '' });
+  const [contexto, telefonoAlertas] = await Promise.all([clientes.obtenerContexto(req.clienteId), clientes.obtenerTelefonoAlertas(req.clienteId)]);
+  res.json({ contexto: contexto || '', telefonoAlertas: telefonoAlertas || '' });
 }));
 
 router.put('/clientes/:clienteId/negocio', resolveClienteAccess, h(async (req, res) => {
   await clientes.actualizarContexto(req.clienteId, texto(req.body.contextoNegocio, 8000));
   ok(res, 'Información Guardada');
+}));
+
+// Número al que el bot le escribe por WhatsApp cuando un chat pasa a revisión
+// humana (piden una persona o insultan). Vacío = no se avisa a nadie.
+router.put('/clientes/:clienteId/negocio/alertas', resolveClienteAccess, h(async (req, res) => {
+  const digitos = texto(req.body.telefonoAlertas, 40).replace(/\D/g, '');
+  if (digitos && (digitos.length < 10 || digitos.length > 15)) {
+    return falla(res, 400, 'Número Inválido: Poné El Código De País, Ej. +54 9 11 1234-5678');
+  }
+  await clientes.setTelefonoAlertas(req.clienteId, digitos || null);
+  (digitos ? ok : aviso)(res, digitos ? 'Número De Alertas Guardado' : 'Sin Número De Alertas: Nadie Recibe El Aviso Por WhatsApp', { telefonoAlertas: digitos });
 }));
 
 // Interruptor general del bot.
@@ -400,6 +514,8 @@ router.post('/clientes/:clienteId/chats/:userId/enviar', resolveClienteAccess, h
 
   const pausado = chat.botActivo;
   if (pausado) await chats.setBotChat(req.clienteId, userId, false, req.session.usuario.email);
+  // Si había pedido una persona, ya lo atendieron (queda Atendido con quién respondió).
+  if (chat.revisionHumana) await chats.atenderRevision(req.clienteId, userId, req.session.usuario.email);
   ok(res, pausado ? 'Mensaje Enviado Y Bot Pausado En Este Chat' : 'Mensaje Enviado', { botPausado: pausado });
 }));
 
@@ -411,9 +527,18 @@ router.post('/clientes/:clienteId/chats/:userId/nombre', resolveClienteAccess, h
   ok(res, nombre ? 'Nombre Guardado' : 'Nombre Borrado', { nombre });
 }));
 
+// Saca el chat de "Revisión Humana" sin reactivar el bot (ej. lo atendieron por teléfono).
+router.post('/clientes/:clienteId/chats/:userId/revision/atender', resolveClienteAccess, h(async (req, res) => {
+  const listo = await chats.atenderRevision(req.clienteId, String(req.params.userId).slice(0, 100), req.session.usuario.email);
+  if (!listo) return falla(res, 404, 'El Chat No Tenía Un Humano Solicitado');
+  ok(res, 'Marcado Como Atendido');
+}));
+
 // Pausa / reactiva el bot para un número puntual.
 router.post('/clientes/:clienteId/chats/:userId/bot', resolveClienteAccess, h(async (req, res) => {
   const activo = req.body.activo === true;
+  // Reactivar el bot da por atendido el pedido de persona (si había uno pendiente).
+  if (activo) await chats.atenderRevision(req.clienteId, String(req.params.userId).slice(0, 100), req.session.usuario.email);
   const listo = await chats.setBotChat(req.clienteId, String(req.params.userId).slice(0, 100), activo, req.session.usuario.email);
   if (!listo) return falla(res, 404, 'Chat No Encontrado');
   (activo ? ok : aviso)(res, activo ? 'Bot Reactivado En Este Chat' : 'Bot Pausado: Ya No Le Responde', { activo });
@@ -423,6 +548,17 @@ router.post('/clientes/:clienteId/chats/:userId/bot', resolveClienteAccess, h(as
 
 router.get('/clientes/:clienteId/escalamientos', resolveClienteAccess, h(async (req, res) => {
   res.json(await escalamientos.listarEscalamientos(req.clienteId, paginaDe(req)));
+}));
+
+// Bandeja de la página Reclamos: chats con reclamos + los reclamos de cada uno.
+// El estado de cada reclamo se cambia con POST .../escalamientos/:id/estado.
+router.get('/clientes/:clienteId/reclamos-bandeja', resolveClienteAccess, h(async (req, res) => {
+  const [resultado, huella] = await Promise.all([
+    chats.listarReclamosBandeja(req.clienteId, { page: paginaDe(req), estado: req.query.estado, q: texto(req.query.q, 50) }),
+    chats.huellaBandeja(req.clienteId),
+  ]);
+  res.set('Cache-Control', 'no-store');
+  res.json({ ...resultado, huella, envioHabilitado: bot.envioHabilitado() });
 }));
 
 router.post('/clientes/:clienteId/escalamientos/:id/estado', resolveClienteAccess, h(async (req, res) => {
@@ -436,6 +572,26 @@ router.post('/clientes/:clienteId/escalamientos/:id/estado', resolveClienteAcces
     throw err;
   }
   ok(res, 'Estado Actualizado');
+}));
+
+// ── Atención Humana (chats que pidieron una persona) ───────────────────────
+// La conversación se abre con las rutas de /chats/:userId (historial, enviar, bot).
+
+router.get('/clientes/:clienteId/humano-solicitado', resolveClienteAccess, h(async (req, res) => {
+  const [resultado, huella] = await Promise.all([
+    chats.listarHumanoSolicitado(req.clienteId, { page: paginaDe(req), estado: req.query.estado, q: texto(req.query.q, 50) }),
+    chats.huellaBandeja(req.clienteId),
+  ]);
+  res.set('Cache-Control', 'no-store');
+  res.json({ ...resultado, huella, envioHabilitado: bot.envioHabilitado() });
+}));
+
+router.post('/clientes/:clienteId/humano-solicitado/:userId/estado', resolveClienteAccess, h(async (req, res) => {
+  const estado = req.body.estado;
+  if (estado !== 'pendiente' && estado !== 'atendido') return falla(res, 400, 'Estado Inválido');
+  const listo = await chats.setEstadoHumano(req.clienteId, String(req.params.userId).slice(0, 100), estado, req.session.usuario.email);
+  if (!listo) return falla(res, 404, 'El Chat Ya Estaba En Ese Estado');
+  ok(res, estado === 'atendido' ? 'Marcado Como Atendido' : 'Marcado Como Pendiente');
 }));
 
 // ── Pedidos ─────────────────────────────────────────────────────────────────
@@ -598,6 +754,20 @@ router.get('/clientes/:clienteId/shopify/sync/:jobId', resolveClienteAccess, (re
 });
 
 // ── Errores ─────────────────────────────────────────────────────────────────
+
+// ── Logs (solo admin) ───────────────────────────────────────────────────────
+
+router.get('/logs', requireAdmin, h(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await logs.listar({
+    page: paginaDe(req),
+    origen: req.query.origen,
+    nivel: req.query.nivel,
+    clienteId: parseInt(req.query.clienteId, 10) || null,
+    evento: texto(req.query.evento, 100).trim(),
+    q: texto(req.query.q, 100).trim(),
+  }));
+}));
 
 router.use((req, res) => falla(res, 404, 'No Encontrado'));
 

@@ -25,4 +25,18 @@ function getPool() {
   return poolPromise;
 }
 
-module.exports = { getPool, sql };
+/**
+ * Ejecuta un stored procedure (D:/SQL Scripts/Bot_Mensajeria.sql).
+ * @param {string} procedure  ej. 'dbo.usp_Portal_LogsListar'
+ * @param {Record<string, [any, any]>} params  { nombre: [tipoMssql, valor] }
+ */
+async function ejecutar(procedure, params = {}) {
+  const pool = await getPool();
+  const request = pool.request();
+  for (const [nombre, [tipo, valor]] of Object.entries(params)) {
+    request.input(nombre, tipo, valor === undefined ? null : valor);
+  }
+  return request.execute(procedure);
+}
+
+module.exports = { getPool, ejecutar, sql };

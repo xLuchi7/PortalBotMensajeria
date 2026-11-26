@@ -84,12 +84,67 @@ export default function Negocio() {
       </section>
 
       <section className="seccion">
+        <h2 className="seccion-titulo"><Icon name="phone" /> Aviso de revisión humana</h2>
+        {error && !data ? <ErrorCarga error={error} onReintentar={reload} />
+          : !data ? <div className="card editor-card"><span className="skeleton" style={{ width: '60%' }} /></div>
+          : <TelefonoAlertas clienteId={clienteId} inicial={data.telefonoAlertas || ''} />}
+      </section>
+
+      <section className="seccion">
         <h2 className="seccion-titulo"><Icon name="sparkles" /> Lo que el bot sabe de tu negocio</h2>
         {error && !data ? <ErrorCarga error={error} onReintentar={reload} />
           : !data ? <div className="card editor-card"><span className="skeleton" style={{ width: '80%' }} /></div>
           : <EditorContexto clienteId={clienteId} inicial={data.contexto || ''} />}
       </section>
     </>
+  );
+}
+
+// "+54 9 11 5486-8604" a partir de los dígitos guardados (5491154868604).
+function lindo(digitos) {
+  const d = String(digitos || '').replace(/\D/g, '');
+  const m = /^549(11|\d{3,4})(\d{3,4})(\d{4})$/.exec(d);
+  if (m) return `+54 9 ${m[1]} ${m[2]}-${m[3]}`;
+  return d ? `+${d}` : '';
+}
+
+// Número al que el bot le escribe por WhatsApp cuando un chat pasa a revisión
+// humana (alguien pide una persona o insulta).
+function TelefonoAlertas({ clienteId, inicial }) {
+  const [telefono, setTelefono] = useState(lindo(inicial));
+  const [guardado, setGuardado] = useState(lindo(inicial));
+  const [guardando, setGuardando] = useState(false);
+  const avisar = useAvisar();
+  const sucio = telefono.trim() !== guardado;
+
+  const guardar = async (e) => {
+    e.preventDefault();
+    setGuardando(true);
+    try {
+      const r = await api(`/clientes/${clienteId}/negocio/alertas`, { method: 'PUT', body: { telefonoAlertas: telefono } });
+      avisar(r);
+      setTelefono(lindo(r.telefonoAlertas));
+      setGuardado(lindo(r.telefonoAlertas));
+    } catch (err) { avisar(err); }
+    setGuardando(false);
+  };
+
+  return (
+    <div className="card alertas-card">
+      <p className="alertas-ayuda">
+        Si alguien pide hablar con una persona o insulta, el bot le responde <em>“Esperame un momento que lo estoy consultando”</em>,
+        deja de contestar en ese chat y le manda un WhatsApp a este número avisando. En el portal el chat aparece como <strong>Humano Solicitado</strong>.
+      </p>
+      <form onSubmit={guardar} className="alertas-form">
+        <input type="tel" inputMode="tel" value={telefono} onChange={e => setTelefono(e.target.value)}
+               placeholder="+54 9 11 1234-5678" aria-label="Número para los avisos" maxLength={30} />
+        <button type="submit" className="btn btn-primary" disabled={guardando || !sucio}><Icon name="save" /> {guardando ? 'Guardando…' : 'Guardar'}</button>
+      </form>
+      <p className="alertas-nota">
+        Con código de país. Para que el aviso llegue, ese número tiene que haberle escrito al número del bot en las últimas 24 hs
+        (es una regla de WhatsApp); si no, solo llega si el admin configuró la plantilla de alerta. Igual el chat siempre se marca acá en el portal.
+      </p>
+    </div>
   );
 }
 

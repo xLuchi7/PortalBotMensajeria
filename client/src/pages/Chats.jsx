@@ -4,16 +4,41 @@ import Icon from '../components/Icon.jsx';
 import BotSwitch from '../components/BotSwitch.jsx';
 import { Pagination, useTitulo } from '../components/ui.jsx';
 import { useAvisar } from '../components/Toasts.jsx';
+import { useConfirm } from '../components/Confirm.jsx';
 import { useCliente } from '../components/Layout.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { api, useApi } from '../lib/api.js';
+import { useEnVivo } from '../lib/eventos.jsx';
 import { iniciales, plural, query, tono } from '../lib/format.js';
 
-const POLL_VISIBLE = 4000;
-const POLL_OCULTA = 15000;
 
-export default function Chats() {
-  useTitulo('Chats');
+// La misma bandeja sirve para dos páginas: Chats (todos) y Atención Humana
+// (modo="humano": solo los chats que pidieron hablar con una persona, con su
+// estado Pendiente / Atendido). La conversación y el envío son los mismos.
+const MODOS = {
+  chats: {
+    titulo: 'Chats',
+    sub: 'Todas las conversaciones de tus clientes. Abrí un chat para leerlo, responder vos o pausar el bot.',
+    lista: '/chats',
+    vacio: 'Todavía no hay chats.',
+  },
+  humano: {
+    titulo: 'Atención Humana',
+    sub: 'Chats donde pidieron hablar con una persona. El bot quedó pausado: leé lo que pasó y respondele desde acá.',
+    lista: '/humano-solicitado',
+    vacio: 'Nadie pidió hablar con una persona todavía.',
+  },
+  reclamos: {
+    titulo: 'Reclamos',
+    sub: 'Reclamos, devoluciones o pedidos fuera de lo común que registró el bot. Leé el chat, respondele y cambiá el estado de cada reclamo.',
+    lista: '/reclamos-bandeja',
+    vacio: 'No hay reclamos todavía 🎉',
+  },
+};
+
+export default function Chats({ modo = 'chats' }) {
+  const m = MODOS[modo];
+  useTitulo(m.titulo);
   const { clienteId } = useParams();
   const [params, setParams] = useSearchParams();
   const { cliente } = useCliente();
@@ -25,7 +50,7 @@ export default function Chats() {
   };
   const chatId = params.get('chat') || '';
 
-  const lista = useApi(`/clientes/${clienteId}/chats${query(filtros)}`);
+  const lista = useApi(`/clientes/${clienteId}${m.lista}${query(filtros)}`);
   const chat = useApi(chatId ? `/clientes/${clienteId}/chats/${encodeURIComponent(chatId)}` : null);
   const datos = lista.data;
 
@@ -36,7 +61,9 @@ export default function Chats() {
     setParams(nuevos);
   }, [params, setParams]);
 
-  const nuevos = useTiempoReal({ clienteId, huella: datos?.huella, lista, chat, filas: datos?.rows });
+  const nuevos = useTiempoReal({ clienteId, huella: datos?.huella, lista, chat, filas: datos?.rows, titulo: m.titulo });
+
+  useEnVivo(['escalamiento', 'pedido'], () => { if (modo === 'reclamos') lista.reload(); });
 
   const hayFiltro = filtros.q || filtros.estado || filtros.bot;
   const resumen = datos?.resumen;
@@ -45,12 +72,17 @@ export default function Chats() {
     <>
       <div className="page-head">
         <div>
-          <h1>Chats</h1>
-          <p className="page-sub">Todas las conversaciones de tus clientes. Abrí un chat para leerlo, responder vos o pausar el bot.</p>
+          <h1>{m.titulo}</h1>
+          <p className="page-sub">{m.sub}</p>
         </div>
         {resumen && (
           <div className="page-actions">
             <span className="pill"><span className="live-dot" title="Se actualiza solo" /><strong>{resumen.total}</strong> {plural(resumen.total, 'chat')}</span>
+            {modo !== 'chats' && resumen.pendiente > 0 && (
+              <button type="button" className="pill pill-danger pill-btn" onClick={() => cambiar({ estado: filtros.estado === 'pendiente' ? '' : 'pendiente', page: '' })}>
+                <Icon name="user" /> <strong>{resumen.pendiente}</strong> {plural(resumen.pendiente, 'pendiente')}
+              </button>
+            )}
             {resumen.pausados > 0 && (
               <button type="button" className="pill pill-danger pill-btn" onClick={() => cambiar({ bot: filtros.bot === 'pausado' ? '' : 'pausado', page: '' })}>
                 <Icon name="pause" /> <strong>{resumen.pausados}</strong> con el bot pausado
@@ -77,10 +109,10 @@ export default function Chats() {
           {Object.entries(datos?.estados || {}).map(([clave, e]) => (
             <button key={clave} type="button" className={`chip chip-${clave} ${filtros.estado === clave ? 'active' : ''}`}
                     onClick={() => cambiar({ estado: filtros.estado === clave ? '' : clave, page: '' })}>
-              {e.label} <span>{resumen[clave]}</span>
+              {e.label} <span>{resumen?.[clave] ?? '·'}</span>
             </button>
           ))}
-          {resumen && (
+          {resumen && modo === 'chats' && (
             <button type="button" className={`chip chip-pausado ${filtros.bot === 'pausado' ? 'active' : ''}`}
                     onClick={() => cambiar({ bot: filtros.bot === 'pausado' ? '' : 'pausado', page: '' })}>
               <Icon name="pause" /> Bot Pausado <span>{resumen.pausados}</span>
@@ -100,7 +132,7 @@ export default function Chats() {
           ) : !datos.rows.length ? (
             <div className="empty-state">
               <Icon name="inbox" />
-              <p>{hayFiltro ? 'No hay chats con ese filtro.' : 'Todavía no hay chats.'}</p>
+              <p>{hayFiltro ? 'No hay chats con ese filtro.' : m.vacio}</p>
               {hayFiltro && <button type="button" className="btn btn-outline btn-sm" onClick={() => cambiar({ q: '', estado: '', bot: '', page: '' })}>Ver todos</button>}
             </div>
           ) : (
@@ -135,11 +167,14 @@ export default function Chats() {
                 envioHabilitado={datos?.envioHabilitado}
                 onCerrar={() => cambiar({ chat: '' })}
                 onCambio={() => { chat.reload(); lista.reload(); }}
+                humano={modo === 'humano' ? datos?.rows.find(r => r.userId === chatId) : null}
+                reclamos={modo === 'reclamos' ? datos?.rows.find(r => r.userId === chatId)?.listaReclamos : null}
+                onReclamo={() => lista.reload()}
                 setChat={fn => chat.setData(d => ({ ...d, chat: fn(d.chat) }))}
               />
             )
           ) : (
-            <ComoFunciona />
+            modo === 'humano' ? <ComoFuncionaHumano /> : modo === 'reclamos' ? <ComoFuncionaReclamos /> : <ComoFunciona />
           )}
         </section>
       </div>
@@ -148,11 +183,11 @@ export default function Chats() {
 }
 
 // ── Tiempo real ─────────────────────────────────────────────────────────────
-// Cada pocos segundos pregunta si hubo novedades (una query chiquita). Si las
-// hubo, recarga la lista y el chat abierto. Devuelve los chats que cambiaron
+// El servidor avisa cuando hay novedades (lib/eventos.jsx); se confirma con la
+// huella (una query chiquita) y, si cambió, recarga la lista y el chat abierto. Devuelve los chats que cambiaron
 // para resaltarlos, y con la pestaña en segundo plano cuenta los mensajes
 // nuevos en el título.
-function useTiempoReal({ clienteId, huella, lista, chat, filas }) {
+function useTiempoReal({ clienteId, huella, lista, chat, filas, titulo }) {
   const huellaRef = useRef(huella);
   const anteriores = useRef(null);
   const [nuevos, setNuevos] = useState(() => new Set());
@@ -174,38 +209,35 @@ function useTiempoReal({ clienteId, huella, lista, chat, filas }) {
     const delCliente = cambiados.filter(f => f.ultimoRol === 'user').length;
     if (document.hidden && delCliente) {
       sinLeer.current += delCliente;
-      document.title = `(${sinLeer.current}) Chats — Portal de Clientes`;
+      document.title = `(${sinLeer.current}) ${titulo} — Portal de Clientes`;
     }
     const t = setTimeout(() => setNuevos(new Set()), 2600);
     return () => clearTimeout(t);
   }, [filas]);
 
-  useEffect(() => {
-    let timer;
-    let vivo = true;
-    const revisar = async () => {
-      try {
-        const r = await api(`/clientes/${clienteId}/chats/novedades`);
-        if (vivo && huellaRef.current && r.huella !== huellaRef.current) {
-          huellaRef.current = r.huella;
-          recargar.current();
-        }
-      } catch {
-        // Sin red: se reintenta en la próxima vuelta.
+  // Cuando el servidor avisa (o al volver a la pestaña), confirma con la huella
+  // que de verdad cambió algo antes de recargar.
+  useEnVivo(['mensaje', 'chat', 'revision'], async () => {
+    try {
+      const r = await api(`/clientes/${clienteId}/chats/novedades`);
+      if (huellaRef.current && r.huella !== huellaRef.current) {
+        huellaRef.current = r.huella;
+        recargar.current();
       }
-      if (vivo) timer = setTimeout(revisar, document.hidden ? POLL_OCULTA : POLL_VISIBLE);
-    };
-    timer = setTimeout(revisar, POLL_VISIBLE);
+    } catch {
+      // Sin red: se reintenta con el próximo aviso.
+    }
+  });
+
+  useEffect(() => {
     const alVolver = () => {
       if (document.hidden) return;
       sinLeer.current = 0;
-      document.title = 'Chats — Portal de Clientes';
-      clearTimeout(timer);
-      revisar();
+      document.title = `${titulo} — Portal de Clientes`;
     };
     document.addEventListener('visibilitychange', alVolver);
-    return () => { vivo = false; clearTimeout(timer); document.removeEventListener('visibilitychange', alVolver); };
-  }, [clienteId]);
+    return () => document.removeEventListener('visibilitychange', alVolver);
+  }, [titulo]);
 
   return nuevos;
 }
@@ -260,6 +292,109 @@ function ComoFunciona() {
           <div><strong>Respondé desde acá</strong><small>WhatsApp deja escribirle hasta 24 hs después de su último mensaje.</small></div>
         </li>
       </ol>
+    </div>
+  );
+}
+
+// Panel vacío de Atención Humana.
+function ComoFuncionaHumano() {
+  return (
+    <div className="como-funciona">
+      <div className="como-funciona-icono"><Icon name="user" /></div>
+      <h2>Elegí un chat de la lista</h2>
+      <p>Vas a ver toda la conversación para entender qué pasó antes de responder.</p>
+      <ol className="como-funciona-pasos">
+        <li className="paso-rojo">
+          <span className="paso-icono"><Icon name="pause" /></span>
+          <div><strong>El bot se pausó solo</strong><small>Cuando piden una persona (o insultan) le dice que espere y deja de contestar en ese chat.</small></div>
+        </li>
+        <li className="paso-violeta">
+          <span className="paso-icono"><Icon name="send" /></span>
+          <div><strong>Respondé desde acá</strong><small>Al mandarle un mensaje, el chat pasa a Atendido solo.</small></div>
+        </li>
+        <li className="paso-verde">
+          <span className="paso-icono"><Icon name="bot" /></span>
+          <div><strong>Reactivá el bot al terminar</strong><small>Con el interruptor de arriba del chat. También lo da por atendido.</small></div>
+        </li>
+      </ol>
+    </div>
+  );
+}
+
+// Panel vacío de Reclamos.
+function ComoFuncionaReclamos() {
+  return (
+    <div className="como-funciona">
+      <div className="como-funciona-icono"><Icon name="alertTriangle" /></div>
+      <h2>Elegí un chat de la lista</h2>
+      <p>Arriba del chat vas a ver sus reclamos, y abajo toda la conversación para entender qué pasó.</p>
+      <ol className="como-funciona-pasos">
+        <li className="paso-rojo">
+          <span className="paso-icono"><Icon name="alertTriangle" /></span>
+          <div><strong>Leé el reclamo</strong><small>El bot lo registró con un resumen del motivo.</small></div>
+        </li>
+        <li className="paso-violeta">
+          <span className="paso-icono"><Icon name="send" /></span>
+          <div><strong>Respondé desde acá</strong><small>Si querés atenderlo vos, pausá el bot en ese chat.</small></div>
+        </li>
+        <li className="paso-verde">
+          <span className="paso-icono"><Icon name="check" /></span>
+          <div><strong>Cambiá el estado</strong><small>Pendiente, En proceso o Resuelto (final). Si el reclamo es de un pedido, al marcar el pedido Solucionado se resuelve solo.</small></div>
+        </li>
+      </ol>
+    </div>
+  );
+}
+
+// Reclamos del chat abierto, con su estado (Resuelto es final: pide confirmación).
+function ReclamosDelChat({ clienteId, reclamos, onCambio }) {
+  const avisar = useAvisar();
+  const confirmar = useConfirm();
+  const [estados, setEstados] = useState({});
+
+  const cambiar = async (r, estado) => {
+    if (estado === 'resuelto') {
+      const ok = await confirmar({
+        titulo: '¿Marcar como resuelto?',
+        mensaje: 'Resuelto es un estado final: después no se puede cambiar.',
+        boton: 'Marcar resuelto',
+        peligro: false,
+      });
+      if (!ok) return;
+    }
+    setEstados(e => ({ ...e, [r.id]: estado }));
+    try {
+      avisar(await api(`/clientes/${clienteId}/escalamientos/${r.id}/estado`, { method: 'POST', body: { estado } }));
+    } catch (err) {
+      avisar(err);
+      setEstados(e => ({ ...e, [r.id]: undefined }));
+    }
+    onCambio();
+  };
+
+  return (
+    <div className="chat-reclamos">
+      {reclamos.map(r => {
+        const estado = estados[r.id] || r.estado;
+        return (
+          <div key={r.id} className={`chat-reclamo is-${estado}`}>
+            <Icon name={estado === 'resuelto' ? 'check' : 'alertTriangle'} />
+            <div className="chat-revision-texto">
+              <strong>Reclamo{r.pedidoId ? ` · Pedido #${r.pedidoId}` : ''}</strong>
+              <span>{r.motivo}{r.fecha && ` · ${r.fecha.slice(0, 17)}`}</span>
+            </div>
+            {estado === 'resuelto' ? (
+              <span className="badge badge-resuelto">Resuelto</span>
+            ) : (
+              <select value={estado} onChange={ev => cambiar(r, ev.target.value)} className={`badge-select badge-${estado}`} aria-label="Estado del reclamo">
+                <option value="pendiente">Pendiente</option>
+                <option value="en_proceso">En proceso</option>
+                <option value="resuelto">Resuelto</option>
+              </select>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -327,7 +462,7 @@ function ConversacionCargando() {
 
 // ── Conversación ────────────────────────────────────────────────────────────
 
-function Conversacion({ clienteId, chat, botGeneralApagado, envioHabilitado, onCerrar, onCambio, setChat }) {
+function Conversacion({ clienteId, chat, botGeneralApagado, envioHabilitado, onCerrar, onCambio, setChat, humano, reclamos, onReclamo }) {
   const { usuario } = useAuth();
   const avisar = useAvisar();
   const [guardandoBot, setGuardandoBot] = useState(false);
@@ -342,6 +477,24 @@ function Conversacion({ clienteId, chat, botGeneralApagado, envioHabilitado, onC
       onCambio();
     } catch (err) { avisar(err); }
     setGuardandoBot(false);
+  };
+
+  // Saca el chat de "Revisión Humana" sin reactivar el bot.
+  const marcarAtendido = async () => {
+    try {
+      avisar(await api(`${base}/revision/atender`, { method: 'POST' }));
+      setChat(c => ({ ...c, revisionHumana: false }));
+      onCambio();
+    } catch (err) { avisar(err); }
+  };
+
+  // Atención Humana: un chat ya atendido se puede volver a abrir.
+  const volverAPendiente = async () => {
+    try {
+      avisar(await api(`/clientes/${clienteId}/humano-solicitado/${encodeURIComponent(chat.userId)}/estado`, { method: 'POST', body: { estado: 'pendiente' } }));
+      setChat(c => ({ ...c, revisionHumana: true }));
+      onCambio();
+    } catch (err) { avisar(err); }
   };
 
   const ayudaBot = chat.botActivo
@@ -376,6 +529,34 @@ function Conversacion({ clienteId, chat, botGeneralApagado, envioHabilitado, onC
       </header>
       {botGeneralApagado && (
         <div className="chat-aviso"><Icon name="power" /> El bot está apagado en general: no responde en ningún chat, tampoco en este. <Link to={`/clientes/${clienteId}/negocio`}>Encenderlo</Link></div>
+      )}
+      {chat.revisionHumana && (
+        <div className="chat-revision" role="alert">
+          <Icon name="alertTriangle" />
+          <div className="chat-revision-texto">
+            <strong>Humano solicitado</strong>
+            <span>
+              {chat.revisionHumanaMotivo || 'Pidió hablar con una persona.'}
+              {chat.revisionHumanaFecha && ` · ${chat.revisionHumanaFecha}`}
+              {' · '}El bot le dijo que espere y quedó pausado. Respondele vos; cuando termines, reactivá el bot.
+            </span>
+          </div>
+          <button type="button" className="btn btn-sm btn-outline" onClick={marcarAtendido}><Icon name="check" /> Marcar atendido</button>
+        </div>
+      )}
+      {reclamos?.length > 0 && <ReclamosDelChat clienteId={clienteId} reclamos={reclamos} onCambio={onReclamo} />}
+      {humano && !chat.revisionHumana && (
+        <div className="chat-revision chat-atendido" role="status">
+          <Icon name="check" />
+          <div className="chat-revision-texto">
+            <strong>Atendido</strong>
+            <span>
+              {humano.motivo || 'Pidió hablar con una persona.'}
+              {(humano.atendidaPor || humano.atendidaEn) && <> · Lo atendió {humano.atendidaPor || 'tu equipo'}{humano.atendidaEn && ` el ${humano.atendidaEn.slice(0, 17)}`}</>}
+            </span>
+          </div>
+          <button type="button" className="btn btn-sm btn-outline" onClick={volverAPendiente}><Icon name="alertTriangle" /> Volver a pendiente</button>
+        </div>
       )}
 
       <div className={`chat-estado-barra ${chat.botActivo ? 'on' : 'off'}`}>

@@ -8,13 +8,13 @@ import Usuarios from './pages/Usuarios.jsx';
 import UsuarioForm from './pages/UsuarioForm.jsx';
 import InicioCliente from './pages/Inicio.jsx';
 import Chats from './pages/Chats.jsx';
-import Escalamientos from './pages/Escalamientos.jsx';
 import Consultas from './pages/Consultas.jsx';
 import Pedidos from './pages/Pedidos.jsx';
 import Articulos from './pages/Articulos.jsx';
 import ArticuloForm from './pages/ArticuloForm.jsx';
 import Negocio from './pages/Negocio.jsx';
 import Integraciones from './pages/Integraciones.jsx';
+import Logs from './pages/Logs.jsx';
 import NoEncontrada from './pages/NoEncontrada.jsx';
 
 function PantallaCarga() {
@@ -58,13 +58,16 @@ export default function App() {
         <Route path="usuarios" element={<Privada admin><Usuarios /></Privada>} />
         <Route path="usuarios/nuevo" element={<Privada admin><UsuarioForm /></Privada>} />
         <Route path="usuarios/:id/editar" element={<Privada admin><UsuarioForm /></Privada>} />
+        <Route path="logs" element={<Privada admin><Logs /></Privada>} />
 
         <Route path="clientes/:clienteId">
           <Route index element={<Navigate to="inicio" replace />} />
           <Route path="inicio" element={<InicioCliente />} />
-          <Route path="chats" element={<Chats />} />
+          <Route path="chats" element={<Chats key="chats" />} />
           <Route path="mensajes" element={<RedirMensajes />} />
-          <Route path="escalamientos" element={<Escalamientos />} />
+          <Route path="atencion-humana" element={<Chats modo="humano" key="humano" />} />
+          <Route path="reclamos" element={<Chats modo="reclamos" key="reclamos" />} />
+          <Route path="escalamientos" element={<Navigate to="../reclamos" replace />} />
           <Route path="consultas" element={<Consultas />} />
           <Route path="pedidos" element={<Pedidos />} />
           <Route path="articulos" element={<Articulos />} />

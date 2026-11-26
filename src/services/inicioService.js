@@ -118,7 +118,7 @@ async function resumen(clienteId, dias) {
       SELECT COUNT(*) OVER () AS total, e.id, e.userId, e.motivo, e.fechaAlta AS fecha, COALESCE(ch.nombre, ch.nombrePerfil) AS nombre
       FROM Escalamientos e
       LEFT JOIN Chats ch ON ch.clienteId = e.clienteId AND ch.userId = e.userId
-      WHERE e.clienteId = @clienteId AND e.estado <> 'resuelto'
+      WHERE e.clienteId = @clienteId AND e.estado <> 'resuelto' AND e.motivo NOT LIKE '[[]Revisión humana]%'
       ORDER BY e.id DESC
       OFFSET 0 ROWS FETCH NEXT 3 ROWS ONLY;
 
@@ -163,7 +163,7 @@ async function resumen(clienteId, dias) {
         FROM Pedidos WHERE clienteId = @clienteId ORDER BY fechaAlta DESC
         UNION ALL
         SELECT TOP 40 'reclamo', CAST(id AS nvarchar(20)), userId, CAST(motivo AS nvarchar(400)), NULL, NULL, NULL, fechaAlta
-        FROM Escalamientos WHERE clienteId = @clienteId ORDER BY fechaAlta DESC
+        FROM Escalamientos WHERE clienteId = @clienteId AND motivo NOT LIKE '[[]Revisión humana]%' ORDER BY fechaAlta DESC
         UNION ALL
         SELECT TOP 40 'consulta', CAST(id AS nvarchar(20)), userId, CAST(detalle AS nvarchar(400)), NULL, articuloNombre, sinStock, fechaAlta
         FROM VConsultas WHERE clienteId = @clienteId AND tipo = 'articulo' ORDER BY fechaAlta DESC
@@ -266,9 +266,16 @@ async function contadores(clienteId) {
          LEFT JOIN Chats ch ON ch.clienteId = @clienteId AND ch.userId = u.userId
          WHERE m.role = 'user' AND (ISNULL(ch.botActivo, 1) = 0 OR ISNULL(c.botActivo, 1) = 0)) AS chats,
         (SELECT COUNT(*) FROM Escalamientos WHERE clienteId = @clienteId AND estado <> 'resuelto') AS escalamientos,
-        (SELECT COUNT(*) FROM Pedidos WHERE clienteId = @clienteId AND estado = 'pendiente') AS pedidos;
+        (SELECT COUNT(*) FROM Pedidos WHERE clienteId = @clienteId AND estado = 'pendiente') AS pedidos,
+        (SELECT COUNT(*) FROM Chats WHERE clienteId = @clienteId AND revisionHumana = 1) AS revision;
+
+      -- Chats en revisión humana, para el aviso de arriba de todo en el portal.
+      SELECT TOP 5 ch.userId, COALESCE(ch.nombre, ch.nombrePerfil) AS nombre, ch.revisionHumanaMotivo AS motivo
+      FROM Chats ch
+      WHERE ch.clienteId = @clienteId AND ch.revisionHumana = 1
+      ORDER BY ch.revisionHumanaEn DESC;
     `);
-  return r.recordset[0];
+  return { ...r.recordsets[0][0], revisionChats: r.recordsets[1] };
 }
 
 module.exports = { resumen, contadores, PERIODOS };

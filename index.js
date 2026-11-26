@@ -14,6 +14,11 @@ const apiRoutes = require('./src/routes/api');
 const shopifyRoutes = require('./src/routes/shopify');
 const shopifySync = require('./src/services/shopifySyncService');
 const { getPool } = require('./src/services/db');
+const logs = require('./src/services/logService');
+
+// Tabla Logs: eventos del portal + todo console.warn/error. Se purga sola a los 7 días.
+logs.iniciar();
+logs.info('portal_iniciado');
 
 const app = express();
 // Railway termina el HTTPS en un proxy: así req.protocol es "https".

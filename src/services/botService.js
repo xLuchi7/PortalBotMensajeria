@@ -15,26 +15,38 @@ function envioHabilitado() {
   return Boolean(config.bot.url && config.bot.apiToken);
 }
 
-async function enviarMensaje({ clienteId, userId, texto, enviadoPor }) {
-  if (!envioHabilitado()) return { ok: false, mensaje: 'Envío De Mensajes Sin Configurar' };
+// POST al bot con timeout. Devuelve { ok } o { ok: false, error, mensaje }
+// (error = código del bot, ej. 'fuera_de_ventana'; mensaje = texto del toast).
+async function llamar(ruta, body) {
+  if (!envioHabilitado()) return { ok: false, error: 'sin_configurar_portal', mensaje: 'Envío De Mensajes Sin Configurar' };
 
   let resp;
   try {
-    resp = await fetch(`${config.bot.url}/portal/enviar`, {
+    resp = await fetch(`${config.bot.url}${ruta}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.bot.apiToken}` },
-      body: JSON.stringify({ clienteId, userId, texto, enviadoPor }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(15000),
     });
   } catch (err) {
     console.error('[bot] No se pudo contactar al bot:', err.message);
-    return { ok: false, mensaje: 'No Se Pudo Contactar Al Bot, Probá De Nuevo' };
+    return { ok: false, error: 'sin_conexion', mensaje: 'No Se Pudo Contactar Al Bot, Probá De Nuevo' };
   }
 
   const data = await resp.json().catch(() => ({}));
   if (resp.ok && data.ok) return { ok: true };
-  console.warn(`[bot] /portal/enviar respondió ${resp.status}: ${data.error || 'sin detalle'}`);
-  return { ok: false, mensaje: ERRORES[data.error] || 'No Se Pudo Enviar El Mensaje' };
+  console.warn(`[bot] ${ruta} respondió ${resp.status}: ${data.error || 'sin detalle'}${data.detalle ? ` (${data.detalle})` : ''}`);
+  return { ok: false, error: data.error || 'desconocido', detalle: data.detalle, mensaje: ERRORES[data.error] || 'No Se Pudo Enviar El Mensaje' };
 }
 
-module.exports = { envioHabilitado, enviarMensaje };
+function enviarMensaje({ clienteId, userId, texto, enviadoPor }) {
+  return llamar('/portal/enviar', { clienteId, userId, texto, enviadoPor });
+}
+
+// Plantilla aprobada por Meta, para avisos fuera de la ventana de 24 h
+// (endpoint /portal/plantilla del bot).
+function enviarPlantilla({ clienteId, userId, plantilla, idioma, parametros, texto, enviadoPor }) {
+  return llamar('/portal/plantilla', { clienteId, userId, plantilla, idioma, parametros, texto, enviadoPor });
+}
+
+module.exports = { envioHabilitado, enviarMensaje, enviarPlantilla };

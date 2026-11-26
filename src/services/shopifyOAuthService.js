@@ -9,7 +9,7 @@ const SHOP_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/;
 
 // Topics que registramos por tienda. Los de compliance (customers/*, shop/redact)
 // no se pueden registrar por API: se configuran en el Dev Dashboard de la app.
-const WEBHOOK_TOPICS = ['PRODUCTS_CREATE', 'PRODUCTS_UPDATE', 'PRODUCTS_DELETE', 'INVENTORY_LEVELS_UPDATE', 'APP_UNINSTALLED'];
+const WEBHOOK_TOPICS = ['PRODUCTS_CREATE', 'PRODUCTS_UPDATE', 'PRODUCTS_DELETE', 'INVENTORY_LEVELS_UPDATE', 'ORDERS_UPDATED', 'ORDERS_CANCELLED', 'APP_UNINSTALLED'];
 
 // URL pública del portal. APP_URL (opcional) manda; si no, la que quedó
 // guardada en la app al cargar las credenciales (el dominio desde el que se

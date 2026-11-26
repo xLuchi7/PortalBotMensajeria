@@ -79,9 +79,13 @@ publicRouter.get('/shopify/callback', async (req, res) => {
   const puedeVer = usuario.rol === 'admin' || usuario.clienteId === datos.clienteId;
   if (usuario.id !== datos.usuarioId || !puedeVer) return res.redirect('/');
 
+  // El nombre que se ve en admin.shopify.com/store/<nombre> no siempre es el
+  // dominio .myshopify.com real (ej. "luma-uruguay" → "abc123-4x.myshopify.com"):
+  // Shopify redirige a la tienda verdadera y vuelve con su dominio. Ese `shop`
+  // viene firmado por Shopify (HMAC con el secret de la app, verificado arriba)
+  // y el state ata la conexión a este usuario y Cliente, así que se usa el real.
   if (datos.shop !== shop) {
-    setFlash(req, 'warning', 'La Tienda No Coincide Con La Que Ingresaste');
-    return irAIntegraciones(res, datos.clienteId);
+    console.log(`[shopify] Se pidió ${datos.shop} y Shopify devolvió ${shop}: se usa el dominio real.`);
   }
 
   try {

@@ -11,6 +11,27 @@ import { fecha, plata, plural } from '../lib/format.js';
 const ESTADOS_FINALES = ['entregado', 'cancelado', 'solucionado'];
 const ESTADO_LABEL = { pendiente: 'Pendiente', confirmado: 'Confirmado', entregado: 'Entregado', cancelado: 'Cancelado', reclamado: 'Reclamado', solucionado: 'Solucionado' };
 
+// Lo que Shopify nos cuenta del pedido (webhook orders/updated): [texto, tono del badge].
+const PAGO = {
+  pendiente: ['Pago pendiente', 'warning'],
+  parcial: ['Pago parcial', 'warning'],
+  pagado: ['Pagado', 'success'],
+  reembolsado: ['Reembolsado', 'neutral'],
+  anulado: ['Pago anulado', 'danger'],
+};
+const ENVIO = {
+  sin_enviar: ['Sin despachar', 'neutral'],
+  parcial: ['Despacho parcial', 'info'],
+  despachado: ['Despachado', 'info'],
+  entregado: ['Recibido', 'success'],
+};
+const AVISO_ESTADO = {
+  enviado: ['Enviado', 'success'],
+  enviando: ['Enviando', 'neutral'],
+  fuera_de_ventana: ['No enviado', 'warning'],
+  error: ['Error', 'danger'],
+};
+
 export default function Pedidos() {
   useTitulo('Pedidos');
   const { clienteId } = useParams();
@@ -65,10 +86,10 @@ export default function Pedidos() {
   };
 
   const abrirDetalle = async (p) => {
-    setDetalle({ id: p.id, items: null });
+    setDetalle({ id: p.id, pedido: p, items: null });
     try {
       const r = await api(`/clientes/${clienteId}/pedidos/${p.id}/detalle`);
-      setDetalle(d => (d && d.id === p.id ? { ...d, items: r.items } : d));
+      setDetalle(d => (d && d.id === p.id ? { ...d, items: r.items, avisos: r.avisos } : d));
     } catch {
       setDetalle(d => (d && d.id === p.id ? { ...d, error: true } : d));
     }
@@ -81,6 +102,7 @@ export default function Pedidos() {
         {conShopify ? (
           <>
             <p>Al pasar un pedido a <strong>Confirmado</strong> se crea en tu tienda de Shopify con el pago pendiente y Shopify descuenta el stock. Si lo cancelás después, también se cancela en Shopify.</p>
+            <p>De ahí en más, lo que hagas en Shopify vuelve solo: el pago, el despacho con su seguimiento y las cancelaciones. Cuando lo despachás en Shopify, acá pasa a <strong>Entregado</strong>. Si activaste los avisos en Integraciones, el bot le escribe al cliente.</p>
             <p>Un pedido pasa a <strong>Reclamado</strong> solo cuando el bot detecta un reclamo; al marcarlo <strong>Solucionado</strong> se resuelve el escalamiento asociado (la devolución de stock se maneja en Shopify).</p>
           </>
         ) : (
@@ -196,6 +218,7 @@ function CeldaShopify({ pedido: p, conexion, onReintentar, ocupado }) {
           <span>{p.shopifyOrderName || '-'}</span>
         )}
         {p.shopifyError && <span title={p.shopifyError} style={{ color: 'var(--warning)', display: 'inline-flex' }}><Icon name="alertTriangle" /></span>}
+        {p.shopifyEstado !== 'cancelado' && <EtiquetasShopify pedido={p} />}
       </div>
     );
   }
@@ -217,11 +240,70 @@ function CeldaShopify({ pedido: p, conexion, onReintentar, ocupado }) {
   return <div className="shopify-cell"><span className="field-hint">-</span></div>;
 }
 
+// Pago y envío según Shopify; si hay seguimiento, el camión lleva al link.
+function EtiquetasShopify({ pedido: p }) {
+  const pago = PAGO[p.shopifyPago];
+  const envio = p.shopifyEnvio && p.shopifyEnvio !== 'sin_enviar' ? ENVIO[p.shopifyEnvio] : null;
+  if (!pago && !envio) return null;
+  return (
+    <div className="shopify-etiquetas">
+      {pago && <span className={`badge badge-sm badge-${pago[1]}`}>{pago[0]}</span>}
+      {envio && (p.trackingUrl ? (
+        <a href={p.trackingUrl} target="_blank" rel="noopener noreferrer" className={`badge badge-sm badge-${envio[1]}`}
+           title={`Seguir el envío${p.trackingEmpresa ? ` (${p.trackingEmpresa})` : ''}`}>
+          <Icon name="truck" />{envio[0]}
+        </a>
+      ) : (
+        <span className={`badge badge-sm badge-${envio[1]}`} title={p.trackingNumero ? `Seguimiento: ${p.trackingNumero}` : undefined}>{envio[0]}</span>
+      ))}
+    </div>
+  );
+}
+
+function ShopifyDelPedido({ pedido: p, avisos }) {
+  if (!p?.shopifyOrderId) return null;
+  const pago = PAGO[p.shopifyPago];
+  const envio = ENVIO[p.shopifyEnvio];
+  return (
+    <div className="pedido-shopify">
+      <div className="pedido-shopify-datos">
+        <div><span>Pedido en Shopify</span><strong>{p.shopifyOrderName || '-'}</strong></div>
+        <div><span>Pago</span><strong>{pago ? pago[0] : 'Sin novedades'}</strong></div>
+        <div><span>Envío</span><strong>{envio ? envio[0] : 'Sin novedades'}</strong></div>
+        {(p.trackingUrl || p.trackingNumero) && (
+          <div>
+            <span>Seguimiento{p.trackingEmpresa ? ` · ${p.trackingEmpresa}` : ''}</span>
+            <strong>{p.trackingUrl
+              ? <a href={p.trackingUrl} target="_blank" rel="noopener noreferrer">{p.trackingNumero || 'Ver envío'} <Icon name="externalLink" /></a>
+              : p.trackingNumero}</strong>
+          </div>
+        )}
+      </div>
+      {avisos?.length > 0 && (
+        <div className="pedido-avisos">
+          <div className="pedido-avisos-titulo"><Icon name="send" /> Avisos por WhatsApp</div>
+          {avisos.map(a => {
+            const [texto, tono] = AVISO_ESTADO[a.estado] || [a.estado, 'neutral'];
+            return (
+              <div key={a.id} className="pedido-aviso">
+                <span>{a.nombre}</span>
+                <span className="field-hint">{a.fecha}{a.via === 'plantilla' ? ' · con plantilla' : ''}</span>
+                <span className={`badge badge-sm badge-${tono}`} title={a.detalle || undefined}>{texto}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DetallePedido({ detalle, onCerrar }) {
   let acumulado = 0;
   return (
     <>
       <h3>Pedido #{detalle.id}</h3>
+      <ShopifyDelPedido pedido={detalle.pedido} avisos={detalle.avisos} />
       <div className="table-wrap" style={{ marginBottom: '1.1rem' }}>
         <table>
           <thead>

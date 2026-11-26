@@ -3,6 +3,7 @@ const { getPool, sql } = require('./db');
 const shopify = require('./shopifyClient');
 const apps = require('./shopifyAppService');
 const sync = require('./shopifySyncService');
+const orders = require('./shopifyOrderService');
 
 // X-Shopify-Hmac-Sha256 = base64(HMAC-SHA256(body crudo, client secret)).
 // Tiene que calcularse sobre los bytes tal cual llegaron, antes de parsear.
@@ -65,6 +66,10 @@ async function procesar(topic, shopDomain, payload) {
       break;
     case 'products/delete':
       await sync.desactivarProducto(clienteId, payload.id);
+      break;
+    case 'orders/updated':
+    case 'orders/cancelled':
+      await orders.actualizarDesdeShopify(clienteId, payload);
       break;
     case 'inventory_levels/update':
       await sync.actualizarStockDeInventoryItem(clienteId, payload.inventory_item_id);

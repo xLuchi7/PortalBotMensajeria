@@ -1046,6 +1046,100 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 .shopify-cell { display: flex; align-items: center; justify-content: center; gap: 0.35rem; }
 .shopify-cell a { display: inline-flex; align-items: center; gap: 0.3rem; font-weight: 600; font-size: 0.85rem; }
 .shopify-cell .icon { width: 14px; height: 14px; }
+.shopify-cell { flex-wrap: wrap; }
+
+/* Pago / envío que vuelven de Shopify */
+.badge-sm { width: auto; padding: 0.1rem 0.5rem; font-size: 0.68rem; gap: 0.25rem; }
+.badge-sm .icon { width: 12px; height: 12px; }
+a.badge-sm { text-decoration: none; }
+a.badge-sm:hover { filter: brightness(0.95); }
+.shopify-etiquetas { flex-basis: 100%; display: flex; justify-content: center; flex-wrap: wrap; gap: 0.25rem; }
+.shopify-cell .shopify-etiquetas a { font-size: 0.68rem; font-weight: 600; }
+
+.pedido-shopify {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fafbfd;
+  padding: 0.9rem 1rem;
+  margin-bottom: 1rem;
+}
+.pedido-shopify-datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; }
+.pedido-shopify-datos span { display: block; font-size: 0.75rem; color: var(--text-muted); }
+.pedido-shopify-datos strong { font-size: 0.9rem; }
+.pedido-shopify-datos a { display: inline-flex; align-items: center; gap: 0.25rem; }
+.pedido-shopify-datos .icon { width: 13px; height: 13px; }
+.pedido-avisos { margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px dashed var(--border-strong); }
+.pedido-avisos-titulo { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem; }
+.pedido-avisos-titulo .icon { width: 14px; height: 14px; }
+.pedido-aviso { display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; padding: 0.2rem 0; }
+.pedido-aviso .badge { margin-left: auto; }
+
+/* Avisos por WhatsApp (Integraciones) */
+.avisos-card { padding: 1.75rem; margin-top: 1.25rem; }
+.avisos-logo { background: linear-gradient(145deg, #34d399, #059669); }
+.avisos-lista { display: grid; gap: 0.75rem; margin-bottom: 1rem; }
+.aviso-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.aviso-item.is-on { border-color: #a7f3d0; background: #f6fefa; }
+.aviso-icono {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.aviso-item.is-on .aviso-icono { background: var(--success-soft); color: var(--success); }
+.aviso-cuerpo { flex: 1; min-width: 0; }
+.aviso-titulo { font-weight: 600; }
+.aviso-texto { font-size: 0.85rem; color: var(--text-muted); }
+.aviso-ejemplo {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 10px 10px 10px 2px;
+  background: #e7f8ee;
+  color: #1f3b2c;
+  font-size: 0.82rem;
+}
+.aviso-plantilla { display: block; margin-top: 0.75rem; font-size: 0.82rem; max-width: 420px; }
+
+.mini-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 42px;
+  height: 24px;
+  border: none;
+  border-radius: 999px;
+  background: var(--border-strong);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.mini-switch span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(17, 20, 42, 0.25);
+  transition: transform 0.2s ease;
+}
+.mini-switch[aria-checked="true"] { background: var(--success); }
+.mini-switch[aria-checked="true"] span { transform: translateX(18px); }
+.mini-switch:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
 .stock-readonly { font-weight: 600; }
 /* Asistente del admin (crear la app de Shopify) */
 .wizard-intro { font-size: 0.9rem; color: var(--text-muted); margin: 0 0 1.25rem; }

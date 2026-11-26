@@ -39,6 +39,7 @@ async function listarPedidos(clienteId, page = 1) {
           p.id, p.userId, p.estado, p.total, p.notas,
           COALESCE(ch.nombre, ch.nombrePerfil) AS contactoNombre,
           p.shopifyOrderId, p.shopifyOrderName, p.shopifyEstado, p.shopifyError,
+          p.shopifyPago, p.shopifyEnvio, p.trackingNumero, p.trackingUrl, p.trackingEmpresa,
           FORMAT(p.fechaAlta AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy, HH:mm:ss') AS fecha
         FROM Pedidos p
         JOIN Clientes c ON c.id = p.clienteId

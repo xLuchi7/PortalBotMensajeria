@@ -1,6 +1,8 @@
 const crypto = require('crypto');
 const { getPool, sql } = require('./db');
 const shopify = require('./shopifyClient');
+const apps = require('./shopifyAppService');
+const oauth = require('./shopifyOAuthService');
 
 // Shopify es la fuente de verdad del catálogo para los Clientes conectados:
 // cada VARIANTE de Shopify es un Artículo del portal (que es lo que el bot
@@ -147,8 +149,22 @@ const QUERY_VARIANTES = `
     }
   }`;
 
+// Las tiendas conectadas antes de sumar un webhook nuevo (ej. orders/updated)
+// no lo tienen: en cada sincronización se registran los que falten. Shopify
+// ignora los que ya existen.
+async function asegurarWebhooks(clienteId) {
+  try {
+    const conexion = await shopify.obtenerConexion(clienteId);
+    const app = await apps.obtenerApp(conexion?.appId);
+    if (app && oauth.baseUrl(app)) await oauth.registrarWebhooks(clienteId, app);
+  } catch (err) {
+    console.warn(`[shopify] No se pudieron revisar los webhooks (cliente ${clienteId}):`, err.message);
+  }
+}
+
 async function sincronizarTodo(clienteId, progreso = {}) {
   const pool = await getPool();
+  await asegurarWebhooks(clienteId);
 
   try {
     const c = await shopify.graphql(clienteId, '{ productVariantsCount { count } }');

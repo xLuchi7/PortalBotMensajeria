@@ -20,6 +20,7 @@ const shopifyApps = require('../services/shopifyAppService');
 const shopifyOAuth = require('../services/shopifyOAuthService');
 const shopifySync = require('../services/shopifySyncService');
 const shopifyOrders = require('../services/shopifyOrderService');
+const avisos = require('../services/avisoService');
 
 const router = express.Router();
 const uploadExcel = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -425,7 +426,11 @@ router.get('/clientes/:clienteId/pedidos', resolveClienteAccess, h(async (req, r
 }));
 
 router.get('/clientes/:clienteId/pedidos/:id/detalle', resolveClienteAccess, h(async (req, res) => {
-  res.json({ pedidoId: req.params.id, items: await pedidos.obtenerDetalle(req.params.id, req.clienteId) });
+  const [items, avisosPedido] = await Promise.all([
+    pedidos.obtenerDetalle(req.params.id, req.clienteId),
+    avisos.listarDePedido(req.clienteId, parseInt(req.params.id, 10) || 0),
+  ]);
+  res.json({ pedidoId: req.params.id, items, avisos: avisosPedido });
 }));
 
 router.post('/clientes/:clienteId/pedidos/:id/notas', resolveClienteAccess, h(async (req, res) => {
@@ -483,16 +488,20 @@ function urlPublica(req) {
 }
 
 router.get('/clientes/:clienteId/integraciones', resolveClienteAccess, h(async (req, res) => {
-  const [conexion, resumen, app] = await Promise.all([
+  const [conexion, resumen, app, avisosConfig] = await Promise.all([
     shopify.obtenerConexion(req.clienteId),
     shopifySync.resumen(req.clienteId),
     shopifyApps.obtenerAppDeCliente(req.clienteId),
+    avisos.leerConfig(req.clienteId),
   ]);
   const base = urlPublica(req);
   const esAdmin = req.session.usuario.rol === 'admin';
   res.json({
     conexion,
     resumen,
+    avisos: avisosConfig,
+    // Sin BOT_URL / BOT_API_TOKEN el portal no puede mandar avisos.
+    envioMensajes: bot.envioHabilitado(),
     configurado: Boolean(app && !app.secretIlegible),
     // Nunca el secret al navegador; el Client ID solo lo ve el admin.
     app: app && esAdmin ? { clientId: app.clientId, esGeneral: app.clienteId == null, secretIlegible: app.secretIlegible } : null,
@@ -506,6 +515,12 @@ router.get('/clientes/:clienteId/integraciones', resolveClienteAccess, h(async (
     } : null,
     shopPendiente: req.session.shopifyPendiente || '',
   });
+}));
+
+// Avisos automáticos por WhatsApp (pago recibido, pedido despachado).
+router.post('/clientes/:clienteId/avisos', resolveClienteAccess, h(async (req, res) => {
+  const cfg = await avisos.guardarConfig(req.clienteId, req.body || {});
+  ok(res, 'Avisos Guardados', { avisos: cfg });
 }));
 
 // Solo admin: credenciales de la app (Client ID / secret del Dev Dashboard).

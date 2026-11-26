@@ -1,5 +1,6 @@
 const { getPool, sql } = require('./db');
 const shopify = require('./shopifyClient');
+const avisos = require('./avisoService');
 
 // Un Pedido tomado por WhatsApp se crea en Shopify cuando el Cliente lo pasa
 // a Confirmado (o directo a Entregado): como pedido real con pago pendiente,
@@ -213,4 +214,125 @@ async function alCambiarEstado(pedidoId, clienteId, nuevoEstado) {
   return { omitido: true };
 }
 
-module.exports = { enviarPedido, cancelarPedido, alCambiarEstado };
+// ── De Shopify al portal (webhook orders/updated) ───────────────────────────
+
+const PAGO = {
+  pending: 'pendiente',
+  authorized: 'pendiente',
+  partially_paid: 'parcial',
+  paid: 'pagado',
+  partially_refunded: 'reembolsado',
+  refunded: 'reembolsado',
+  voided: 'anulado',
+};
+const ESTADOS_FINALES = ['entregado', 'cancelado', 'solucionado', 'reclamado'];
+const ENVIADOS = ['parcial', 'despachado', 'entregado'];
+
+function estadoEnvio(payload) {
+  const fulfillments = (payload.fulfillments || []).filter(f => !['cancelled', 'error', 'failure'].includes(f.status));
+  if (payload.fulfillment_status === 'fulfilled') {
+    return fulfillments.length && fulfillments.every(f => f.shipment_status === 'delivered') ? 'entregado' : 'despachado';
+  }
+  return payload.fulfillment_status === 'partial' || fulfillments.length ? 'parcial' : 'sin_enviar';
+}
+
+// El último envío que trae algún dato de seguimiento.
+function seguimiento(payload) {
+  const f = [...(payload.fulfillments || [])].reverse()
+    .find(x => x.status !== 'cancelled' && (x.tracking_number || x.tracking_url || x.tracking_urls?.length));
+  if (!f) return { numero: null, url: null, empresa: null };
+  const url = f.tracking_url || f.tracking_urls?.[0] || null;
+  return {
+    numero: (f.tracking_number || f.tracking_numbers?.[0] || '').slice(0, 100) || null,
+    url: url && /^https?:\/\//i.test(url) ? url.slice(0, 500) : null,
+    empresa: (f.tracking_company || '').slice(0, 100) || null,
+  };
+}
+
+function textoEnvio(nombre, envio, t) {
+  const lineas = [envio === 'parcial' ? `¡Ya salió parte de tu pedido ${nombre}! 🚚` : `¡Tu pedido ${nombre} ya está en camino! 🚚`];
+  if (t.url) lineas.push(`Seguilo acá: ${t.url}`);
+  else if (t.numero) lineas.push(`Número de seguimiento: ${t.numero}${t.empresa ? ` (${t.empresa})` : ''}`);
+  return lineas.join('\n');
+}
+
+/**
+ * Pago, envío, seguimiento y cancelación del pedido en Shopify → portal.
+ * Si Shopify lo despacha, el pedido pasa a Entregado (en el portal, Entregado
+ * es "salió la mercadería"); si lo cancelan allá, se cancela acá. Además manda
+ * los avisos por WhatsApp que el Cliente tenga activados.
+ */
+async function actualizarDesdeShopify(clienteId, payload) {
+  const pool = await getPool();
+  const orderId = shopify.gid('Order', payload.id);
+
+  const r = await pool
+    .request()
+    .input('clienteId', sql.Int, clienteId)
+    .input('orderId', sql.NVarChar, orderId)
+    .query(`
+      SELECT id, userId, estado, shopifyPago, shopifyEnvio, shopifyOrderName
+      FROM Pedidos WHERE clienteId = @clienteId AND shopifyOrderId = @orderId
+    `);
+  const p = r.recordset[0];
+  if (!p) return { omitido: true }; // pedido que no salió del portal (ej. de la tienda web)
+
+  const cancelado = Boolean(payload.cancelled_at);
+  const pago = PAGO[payload.financial_status] || 'pendiente';
+  const envio = estadoEnvio(payload);
+  const t = seguimiento(payload);
+  const nombre = p.shopifyOrderName || payload.name || `#${p.id}`;
+
+  let nuevoEstado = null;
+  if (!ESTADOS_FINALES.includes(p.estado)) {
+    if (cancelado) nuevoEstado = 'cancelado';
+    else if (envio === 'despachado' || envio === 'entregado') nuevoEstado = 'entregado';
+  }
+
+  await pool
+    .request()
+    .input('id', sql.Int, p.id)
+    .input('clienteId', sql.Int, clienteId)
+    .input('pago', sql.NVarChar(20), pago)
+    .input('envio', sql.NVarChar(20), envio)
+    .input('numero', sql.NVarChar(100), t.numero)
+    .input('url', sql.NVarChar(500), t.url)
+    .input('empresa', sql.NVarChar(100), t.empresa)
+    .input('estado', sql.NVarChar, nuevoEstado)
+    .input('cancelado', sql.Bit, cancelado ? 1 : 0)
+    .input('nombre', sql.NVarChar, payload.name || null)
+    .query(`
+      UPDATE Pedidos SET
+        shopifyPago = @pago,
+        shopifyEnvio = @envio,
+        trackingNumero = COALESCE(@numero, trackingNumero),
+        trackingUrl = COALESCE(@url, trackingUrl),
+        trackingEmpresa = COALESCE(@empresa, trackingEmpresa),
+        shopifyActualizado = SYSUTCDATETIME(),
+        shopifyOrderName = COALESCE(shopifyOrderName, @nombre),
+        estado = COALESCE(@estado, estado),
+        shopifyEstado = CASE WHEN @cancelado = 1 THEN 'cancelado' ELSE shopifyEstado END
+      WHERE id = @id AND clienteId = @clienteId
+    `);
+
+  if (nuevoEstado) console.log(`[shopify] Pedido ${p.id} (cliente ${clienteId}) pasó a ${nuevoEstado} desde Shopify.`);
+  if (cancelado) return { actualizado: true };
+
+  if (pago === 'pagado' && p.shopifyPago !== 'pagado') {
+    await avisos.avisar({
+      clienteId, userId: p.userId, tipo: 'pago', clave: `pago:pedido:${p.id}`, pedidoId: p.id,
+      texto: `¡Recibimos el pago de tu pedido ${nombre}! Gracias por tu compra 🙌`,
+      datos: { orderName: nombre },
+    });
+  }
+  if (ENVIADOS.includes(envio) && !ENVIADOS.includes(p.shopifyEnvio)) {
+    await avisos.avisar({
+      clienteId, userId: p.userId, tipo: 'envio', clave: `envio:pedido:${p.id}`, pedidoId: p.id,
+      texto: textoEnvio(nombre, envio, t),
+      datos: { orderName: nombre, trackingUrl: t.url, trackingNumero: t.numero },
+    });
+  }
+  return { actualizado: true };
+}
+
+module.exports = { enviarPedido, cancelarPedido, alCambiarEstado, actualizarDesdeShopify };

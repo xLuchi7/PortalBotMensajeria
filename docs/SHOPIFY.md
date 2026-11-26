@@ -6,6 +6,9 @@ Cada Cliente conecta **su propia tienda de Shopify** (la que ya usa) desde **Int
 - Al pasar un Pedido a **Confirmado** (o directo a Entregado) se crea en la tienda del Cliente como pedido con pago pendiente, tag `whatsapp`, y Shopify descuenta el inventario.
 - Si se cancela en el portal un pedido ya enviado, se cancela en Shopify con restock.
 - Para Clientes conectados el portal no mueve stock local: lo maneja Shopify.
+- **Pedido vivo**: lo que pasa con el pedido en Shopify vuelve al portal por el webhook `orders/updated` (y `orders/cancelled`). Eso incluye el pago (`shopifyPago`), el despacho (`shopifyEnvio`), el seguimiento (`tracking*`) y la cancelación. Si Shopify lo despacha, el pedido pasa a **Entregado** en el portal ("salió la mercadería"); si lo cancelan allá, se cancela acá. Los pedidos que no salieron del portal (ej. de la tienda web) se ignoran.
+- **Avisos por WhatsApp** (Integraciones → Avisos por WhatsApp, apagados por defecto): "Pedido despachado" (con el link de seguimiento) y "Pago recibido". Los manda el bot (`POST /portal/enviar`). Si pasaron más de 24 hs desde el último mensaje de la persona, solo se pueden mandar **plantillas aprobadas por Meta** (`POST /portal/plantilla` del bot). El Cliente crea la plantilla en el WhatsApp Manager y carga su nombre en el portal. Variables: despachado `{{1}}` = número de pedido, `{{2}}` = link o número de seguimiento; pago `{{1}}` = número de pedido. Cada aviso se manda una sola vez (clave única en `AvisosWhatsApp`) y se ve en el detalle del pedido. Configuración en `Clientes.avisosConfig` (JSON). Código: `src/services/avisoService.js`.
+- Las tiendas conectadas antes de sumar un webhook nuevo lo reciben solas en la próxima sincronización (cada sync re-registra los que falten).
 
 ## Puesta en marcha
 

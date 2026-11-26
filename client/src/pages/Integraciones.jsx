@@ -127,12 +127,17 @@ export default function Integraciones() {
                 <li>Precios, stock y productos nuevos se actualizan solos al cambiarlos en Shopify</li>
                 <li>Al pasar un pedido a <strong>Confirmado</strong>, se crea en Shopify con el pago pendiente y descuenta stock</li>
                 <li>Si cancelás un pedido ya enviado, también se cancela en Shopify y vuelve el stock</li>
+                <li>El pago, el despacho y el seguimiento que cargás en Shopify vuelven solos a Pedidos, y el bot puede avisarle al cliente</li>
                 <li>Los artículos de Shopify se editan en Shopify, no acá</li>
               </ul>
             </>
           )}
         </div>
       </div>
+
+      {data && conectado && (
+        <AvisosWhatsApp clienteId={clienteId} inicial={data.avisos} envioMensajes={data.envioMensajes} />
+      )}
 
       {sync.dialogo}
     </>
@@ -341,6 +346,108 @@ function Conectar({ clienteId, conexion, shopPendiente }) {
         <p>La persona dueña de la tienda, o alguien de tu equipo con permiso para instalar apps en Shopify.</p>
       </details>
     </>
+  );
+}
+
+// Qué avisos manda el bot solo cuando Shopify cambia un pedido. `variables`
+// explica los {{n}} de la plantilla de Meta (mismo orden que avisoService).
+const AVISOS = [
+  {
+    tipo: 'envio',
+    icono: 'truck',
+    titulo: 'Pedido despachado',
+    texto: 'Cuando lo despachás en Shopify, le mandamos el link de seguimiento.',
+    ejemplo: '¡Tu pedido #1023 ya está en camino! 🚚 Seguilo acá: …',
+    variables: '{{1}} número de pedido · {{2}} link o número de seguimiento',
+  },
+  {
+    tipo: 'pago',
+    icono: 'wallet',
+    titulo: 'Pago recibido',
+    texto: 'Cuando el pedido figura como pagado en Shopify.',
+    ejemplo: '¡Recibimos el pago de tu pedido #1023! Gracias por tu compra 🙌',
+    variables: '{{1}} número de pedido',
+  },
+];
+
+function AvisosWhatsApp({ clienteId, inicial, envioMensajes }) {
+  const avisar = useAvisar();
+  const [cfg, setCfg] = useState(inicial);
+  const [guardado, setGuardado] = useState(inicial);
+  const [guardando, setGuardando] = useState(false);
+  const cambiado = JSON.stringify(cfg) !== JSON.stringify(guardado);
+
+  const cambiar = (tipo, campo, valor) => setCfg(c => ({ ...c, [tipo]: { ...c[tipo], [campo]: valor } }));
+
+  const guardar = async (e) => {
+    e.preventDefault();
+    setGuardando(true);
+    try {
+      const r = await api(`/clientes/${clienteId}/avisos`, { method: 'POST', body: cfg });
+      avisar(r);
+      setCfg(r.avisos);
+      setGuardado(r.avisos);
+    } catch (err) {
+      avisar(err);
+    }
+    setGuardando(false);
+  };
+
+  return (
+    <form className="card avisos-card" onSubmit={guardar}>
+      <div className="integracion-head">
+        <div className="integracion-logo avisos-logo"><Icon name="send" /></div>
+        <div>
+          <h2>Avisos por WhatsApp</h2>
+          <p>El bot le escribe solo a tu cliente cuando algo cambia en Shopify.</p>
+        </div>
+      </div>
+
+      {!envioMensajes && (
+        <div className="alert alert-warning">El portal todavía no puede mandar mensajes (falta configurar la conexión con el bot). Podés dejar los avisos listos: van a salir cuando esté configurado.</div>
+      )}
+
+      <div className="avisos-lista">
+        {AVISOS.map(a => (
+          <div key={a.tipo} className={`aviso-item ${cfg[a.tipo].activo ? 'is-on' : ''}`}>
+            <div className="aviso-icono"><Icon name={a.icono} /></div>
+            <div className="aviso-cuerpo">
+              <div className="aviso-titulo">{a.titulo}</div>
+              <div className="aviso-texto">{a.texto}</div>
+              <div className="aviso-ejemplo">{a.ejemplo}</div>
+              {cfg[a.tipo].activo && (
+                <label className="aviso-plantilla">
+                  Plantilla para después de 24 hs <span className="field-hint">(opcional)</span>
+                  <input type="text" value={cfg[a.tipo].plantilla} maxLength={512} placeholder="ej: pedido_despachado"
+                         onChange={e => cambiar(a.tipo, 'plantilla', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} />
+                  <span className="field-hint">Variables: {a.variables}</span>
+                </label>
+              )}
+            </div>
+            <button type="button" role="switch" aria-checked={cfg[a.tipo].activo} aria-label={`${cfg[a.tipo].activo ? 'Desactivar' : 'Activar'} aviso de ${a.titulo}`}
+                    className="mini-switch" onClick={() => cambiar(a.tipo, 'activo', !cfg[a.tipo].activo)}>
+              <span />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <details className="ayuda">
+        <summary><Icon name="info" /> ¿Para qué es la plantilla?</summary>
+        <p>WhatsApp deja escribirle libremente a una persona solo durante las <strong>24 hs</strong> después de su último mensaje. Pasado ese tiempo, solo se pueden mandar <strong>plantillas aprobadas por Meta</strong>.</p>
+        <p>Creala en el WhatsApp Manager de tu número (categoría <em>Utilidad</em>, idioma Español) con las variables que figuran en cada aviso, y pegá acá su nombre. Sin plantilla, el aviso igual sale si la persona escribió hace poco; si no, queda registrado como "No enviado" en el detalle del pedido.</p>
+        <label style={{ maxWidth: 220 }}>
+          Código de idioma de las plantillas
+          <input type="text" value={cfg.idioma} maxLength={5} onChange={e => setCfg(c => ({ ...c, idioma: e.target.value.trim() }))} placeholder="es_AR" />
+        </label>
+      </details>
+
+      <div className="integracion-actions">
+        <button type="submit" className="btn btn-primary" disabled={guardando || !cambiado}>
+          {guardando ? <><span className="spinner spinner-sm" /> Guardando…</> : <><Icon name="save" /> Guardar avisos</>}
+        </button>
+      </div>
+    </form>
   );
 }
 

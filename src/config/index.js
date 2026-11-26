@@ -11,6 +11,15 @@ module.exports = {
     password: process.env.DB_PASSWORD,
     port: parseInt(process.env.DB_PORT || '1433', 10),
   },
+  // Para suscribir automáticamente el WABA de un Cliente nuevo (ver
+  // services/metaService.js). whatsappToken es el mismo token de Tech Provider
+  // que usa Bot_Mensajeria (WHATSAPP_ACCESS_TOKEN); businessId es el ID del
+  // Business Portfolio del Tech Provider (el que comparte las WABAs de los clientes).
+  meta: {
+    whatsappToken: process.env.WHATSAPP_ACCESS_TOKEN,
+    businessId: process.env.META_BUSINESS_ID,
+    apiVersion: process.env.META_API_VERSION || 'v25.0',
+  },
   shopify: {
     apiVersion: process.env.SHOPIFY_API_VERSION || '2026-10',
     scopes: process.env.SHOPIFY_SCOPES || 'read_products,read_inventory,read_orders,write_orders',

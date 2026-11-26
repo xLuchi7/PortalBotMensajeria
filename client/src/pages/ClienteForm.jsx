@@ -58,6 +58,12 @@ export default function ClienteForm() {
             Teléfono de WhatsApp Business <span className="field-hint">(el bot lo usa para identificar al Cliente; se guardan solo los dígitos)</span>
             <input type="text" name="telefono" defaultValue={editar?.telefono || ''} required inputMode="tel" />
           </label>
+          {!editando && (
+            <p className="field-hint" style={{ marginTop: '-0.5rem' }}>
+              El cliente ya tiene que haber completado el Embedded Signup con este número — al crearlo, buscamos y
+              suscribimos automáticamente su Cuenta de WhatsApp Business. Si todavía no lo hizo, va a aparecer un error.
+            </p>
+          )}
           <label>
             Email <span className="field-hint">(opcional)</span>
             <input type="email" name="email" defaultValue={editar?.email || ''} />

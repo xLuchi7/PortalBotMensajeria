@@ -13,6 +13,7 @@ const pedidos = require('../services/pedidoService');
 const clientes = require('../services/clienteService');
 const articulos = require('../services/articuloService');
 const consultas = require('../services/consultaService');
+const inicio = require('../services/inicioService');
 const importacion = require('../services/importService');
 const shopify = require('../services/shopifyClient');
 const shopifyApps = require('../services/shopifyAppService');
@@ -118,6 +119,16 @@ router.get('/clientes/:clienteId', resolveClienteAccess, h(async (req, res) => {
   const cliente = await clientes.obtenerCliente(req.clienteId);
   if (!cliente) return falla(res, 404, 'Cliente No Encontrado');
   res.json({ cliente });
+}));
+
+// Inicio: resumen de los últimos 7 o 30 días, lo que necesita atención y la actividad reciente.
+router.get('/clientes/:clienteId/contadores', resolveClienteAccess, h(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await inicio.contadores(req.clienteId));
+}));
+
+router.get('/clientes/:clienteId/inicio', resolveClienteAccess, h(async (req, res) => {
+  res.json(await inicio.resumen(req.clienteId, parseInt(req.query.dias, 10) || 7));
 }));
 
 router.put('/clientes/:clienteId', requireAdmin, resolveClienteAccess, h(async (req, res) => {

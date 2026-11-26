@@ -15,6 +15,11 @@ function getPool() {
         encrypt: true, // requerido por Azure SQL
         trustServerCertificate: false,
       },
+    }).catch(err => {
+      // Si la conexión falla (timeout, firewall, la base despertando), no se
+      // guarda el error: el próximo pedido vuelve a intentar conectar.
+      poolPromise = null;
+      throw err;
     });
   }
   return poolPromise;

@@ -54,7 +54,7 @@ export default function Clientes() {
                     {data.rows.map(c => (
                       <tr key={c.id} className={!c.activo ? 'row-inactive' : ''}>
                         <td>
-                          <Link to={`/clientes/${c.id}/chats`} className="cell-cliente">
+                          <Link to={`/clientes/${c.id}/inicio`} className="cell-cliente">
                             <span className="avatar avatar-sm">{iniciales(c.razonSocial)}</span><strong>{c.razonSocial}</strong>
                           </Link>
                         </td>
@@ -64,7 +64,7 @@ export default function Clientes() {
                         <td className="col-center"><span className={`badge ${c.activo ? 'badge-activo' : 'badge-inactivo'}`}>{c.activo ? 'Activo' : 'Inactivo'}</span></td>
                         <td>
                           <div className="cell-actions">
-                            <Link to={`/clientes/${c.id}/chats`} className="btn btn-accent btn-sm">Entrar <Icon name="arrowLeft" className="icon-flip" /></Link>
+                            <Link to={`/clientes/${c.id}/inicio`} className="btn btn-accent btn-sm">Entrar <Icon name="arrowLeft" className="icon-flip" /></Link>
                             <Link to={`/clientes/${c.id}/editar`} className="icon-btn" title="Editar"><Icon name="edit" /></Link>
                             {c.activo
                               ? <button type="button" className="icon-btn danger" title="Desactivar" onClick={() => desactivar(c)}><Icon name="trash" /></button>

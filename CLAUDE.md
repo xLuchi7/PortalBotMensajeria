@@ -27,7 +27,7 @@ Desarrollo: `npm run dev` (Express en `PORT`, default 3100) + `npm run dev:clien
   - `pages/`: una por pantalla.
   - `components/Layout.jsx`: menú lateral (lista `GRUPOS`, agregá ahí las páginas nuevas); `useCliente()` da el Cliente que se está viendo.
   - `components/ui.jsx`: `PageHead`, `PageHelp`, `Stats`/`Stat`, `Empty`, `TablaCargando`, `ErrorCarga`, `Pagination`, `Contacto`, `useTitulo`.
-  - `components/`: `Toasts.jsx` (`useToast`, `useAvisar`), `Confirm.jsx` (`useConfirm`), `Modal.jsx` (`<dialog>` nativo), `Form.jsx` (validación con toasts), `BotSwitch.jsx`, `ShopifySync.jsx`, `ImportarExcel.jsx`.
+  - `components/`: `Toasts.jsx` (`useToast`, `useAvisar`), `Confirm.jsx` (`useConfirm`), `Modal.jsx` (`<dialog>` nativo), `Form.jsx` (validación con toasts), `BotSwitch.jsx`, `ShopifySync.jsx`, `ImportarExcel.jsx`, `DetalleArticulo.jsx` (modal con fotos y toda la info del artículo; lo de Shopify sale de `Articulos.shopifyDatos`, el JSON completo que guarda el sync).
   - `lib/`: `api.js` (`api()` y `useApi()`), `auth.jsx`, `format.js` (`numero`, `fecha`, `plata`, `iniciales`), `icons.js` (SVGs genéricos, sin logos de marcas; se usan con `<Icon name="x" />`), `timezones.js`.
 - `client/src/styles.css`: un solo CSS con secciones `/* ── Nombre ── */` y variables en `:root`. Patrón de página: `.page-head` (h1 + `.page-sub`), ayuda larga en `PageHelp`, números en `.stats`. `public/`: favicon y plantilla de Excel.
 - `docs/SHOPIFY.md`: cómo funciona la integración con Shopify.

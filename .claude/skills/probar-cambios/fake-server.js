@@ -50,8 +50,14 @@ const pedidos = [
   { id: 9, clienteId: 1, userId: '59898970017', estado: 'reclamado', total: 800, notas: null, shopifyOrderId: null, shopifyEstado: 'error', shopifyError: 'Variante sin stock' },
   { id: 8, clienteId: 1, userId: '59894422029', estado: 'entregado', total: 300, notas: 'Entregado en mano', shopifyOrderId: null, shopifyEstado: null },
 ];
+// Fotos de prueba: SVG en data URL (no dependen de internet).
+const foto = (color, texto) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><rect width="600" height="600" fill="${color}"/><text x="300" y="320" font-size="64" text-anchor="middle" fill="#fff" font-family="sans-serif">${texto}</text></svg>`)}`;
 const articulos = [
-  { id: 1, clienteId: 1, codigo: 'REM-001', nombre: 'Remera Básica - M', descripcion: '', precio: 1250, activo: true, usaStock: true, stock: 8, origen: 'shopify', shopifyProductId: 'gid://shopify/Product/1' },
+  { id: 1, clienteId: 1, codigo: 'REM-001', nombre: 'Remera Básica - M', descripcion: 'Remera de algodón peinado.\nCorte regular.', precio: 1250, precioComparacion: 1500, activo: true, usaStock: true, stock: 8, origen: 'shopify', shopifyProductId: 'gid://shopify/Product/1',
+    imagenes: [foto('#5b4cf0', 'Frente'), foto('#16a34a', 'Espalda'), foto('#d97706', 'Detalle')], marca: 'Luma', tipoProducto: 'Remeras', categoria: 'Ropa > Remeras',
+    etiquetas: 'algodón, verano', colecciones: 'Novedades, Básicos', opciones: [{ nombre: 'Talle', valor: 'M' }], codigoBarras: '7790001', costo: 600, urlTienda: 'https://tienda.test/products/remera',
+    shopifyActualizado: '2026-11-25T10:00:00Z', fechaAlta: '2026-11-01T10:00:00Z',
+    shopifyDatos: { producto: { title: 'Remera Básica', handle: 'remera-basica', status: 'ACTIVE', publishedAt: '2026-11-02T10:00:00Z', createdAt: '2026-11-01T10:00:00Z', totalInventory: 20, tracksInventory: true, seo: { title: 'Remera Básica', description: 'La remera de siempre' }, options: [{ name: 'Talle', values: ['S', 'M', 'L'] }], metafields: [{ namespace: 'custom', key: 'material', value: 'Algodón 100%' }] }, variante: { title: 'M', inventoryPolicy: 'DENY', availableForSale: true, taxable: true, inventoryItem: { requiresShipping: true, countryCodeOfOrigin: 'UY', measurement: { weight: { value: 0.2, unit: 'KILOGRAMS' } } }, metafields: [] }, imagenes: [] } },
   { id: 2, clienteId: 1, codigo: null, nombre: 'Gorra', descripcion: '', precio: 900, activo: true, usaStock: true, stock: 0, origen: 'manual' },
   { id: 3, clienteId: 2, codigo: 'X1', nombre: 'Taza', descripcion: 'Taza blanca', precio: 500, activo: true, usaStock: true, stock: 4, origen: 'manual' },
   { id: 4, clienteId: 2, codigo: null, nombre: 'Envío', descripcion: '', precio: 300, activo: false, usaStock: false, stock: 0, origen: 'manual' },
@@ -197,7 +203,17 @@ stub('src/services/pedidoService.js', {
 });
 
 stub('src/services/articuloService.js', {
-  async listarArticulos(clienteId, page) { const rows = articulos.filter(a => a.clienteId === clienteId); return { ...pag(rows, page), activos: rows.filter(a => a.activo).length }; },
+  async listarArticulos(clienteId, { page = 1, q = '', estado = '' } = {}) {
+    const todos = articulos.filter(a => a.clienteId === clienteId);
+    const filtros = { activos: a => a.activo, inactivos: a => !a.activo, agotados: a => a.activo && a.usaStock && a.stock <= 0, sinFoto: a => a.activo && !a.imagenes?.length };
+    const rows = todos
+      .filter(a => !q || q.toLowerCase().split(/\s+/).every(p => [a.nombre, a.codigo, a.marca, a.etiquetas].join(' ').toLowerCase().includes(p)))
+      .filter(filtros[estado] || (() => true))
+      .map(a => ({ imagenes: [], opciones: [], ...a }));
+    return { ...pag(rows, page), total: todos.length, filtrados: rows.length, activos: todos.filter(a => a.activo).length,
+      agotados: todos.filter(filtros.agotados).length, conFoto: todos.filter(a => a.activo && a.imagenes?.length).length };
+  },
+  async obtenerDetalle(id, clienteId) { const a = articulos.find(x => x.id === Number(id) && x.clienteId === clienteId); return a ? { imagenes: [], opciones: [], shopifyDatos: null, ...a } : null; },
   async obtenerArticulo(id, clienteId) { return articulos.find(a => a.id === Number(id) && a.clienteId === clienteId) || null; },
   async crearArticulo(clienteId, d) { articulos.push({ id: articulos.length + 1, clienteId, activo: true, origen: 'manual', stock: Number(d.cantidadInicial) || 0, ...d, precio: Number(d.precio) }); },
   async actualizarArticulo(id, clienteId, d) { Object.assign(articulos.find(a => a.id === Number(id)), d, { precio: Number(d.precio) }); },

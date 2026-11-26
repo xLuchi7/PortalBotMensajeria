@@ -100,7 +100,15 @@ async function marcarSync(clienteId) {
   await pool
     .request()
     .input('clienteId', sql.Int, clienteId)
-    .query('UPDATE ShopifyConexiones SET ultimaSync = SYSUTCDATETIME() WHERE clienteId = @clienteId');
+    // Si había quedado en error (ej. un bloqueo por IP ya resuelto), un sync que
+    // anduvo la vuelve a activa: si no, la sync periódica la saltearía para siempre.
+    .query(`
+      UPDATE ShopifyConexiones
+      SET ultimaSync = SYSUTCDATETIME(),
+          estado = CASE WHEN estado = 'error' THEN 'activa' ELSE estado END,
+          ultimoError = CASE WHEN estado = 'error' THEN NULL ELSE ultimoError END
+      WHERE clienteId = @clienteId
+    `);
 }
 
 // Al desinstalar/desconectar se borran los tokens: no queremos credenciales
@@ -257,6 +265,15 @@ async function graphqlConToken(shopDomain, token, query, variables = {}) {
     }
 
     if (resp.status === 401 || resp.status === 403) {
+      const cuerpo = await resp.text().catch(() => '');
+      // La app tiene una lista de IPs permitidas y el servidor salió por otra
+      // (Railway cambia la IP de salida). Reconectar no lo arregla.
+      if (/IP restriction/i.test(cuerpo)) {
+        const ip = cuerpo.match(/from ([0-9a-f:.]+)/i)?.[1];
+        const err = new ShopifyAuthError(`Shopify bloqueó la conexión por la restricción de IPs de la app${ip ? ` (el servidor salió por ${ip})` : ''}. Sacá la restricción o agregá esa IP en la configuración de la app en Shopify.`);
+        err.porIp = true;
+        throw err;
+      }
       throw new ShopifyAuthError(`Shopify rechazó el acceso (HTTP ${resp.status}).`);
     }
     if (resp.status === 429 || resp.status >= 500) {
@@ -288,7 +305,7 @@ async function graphql(clienteId, query, variables) {
     return await graphqlConToken(shopDomain, token, query, variables);
   } catch (err) {
     if (err instanceof ShopifyAuthError) {
-      await marcarEstado(clienteId, 'error', 'Shopify rechazó el acceso. Volvé a conectar la tienda.');
+      await marcarEstado(clienteId, 'error', err.porIp ? err.message : 'Shopify rechazó el acceso. Volvé a conectar la tienda.');
     }
     throw err;
   }

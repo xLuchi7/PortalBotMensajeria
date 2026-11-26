@@ -243,10 +243,21 @@ router.post('/clientes/:clienteId/negocio/chats-nuevos', requireAdmin, resolveCl
 
 router.get('/clientes/:clienteId/articulos', resolveClienteAccess, h(async (req, res) => {
   const [resultado, shopifyConexion] = await Promise.all([
-    articulos.listarArticulos(req.clienteId, paginaDe(req)),
+    articulos.listarArticulos(req.clienteId, {
+      page: paginaDe(req),
+      q: texto(req.query.q, 100),
+      estado: texto(req.query.estado, 20),
+    }),
     shopify.obtenerConexionActiva(req.clienteId),
   ]);
   res.json({ ...resultado, shopifyConexion });
+}));
+
+// Toda la info guardada del artículo (también los de Shopify), para el modal.
+router.get('/clientes/:clienteId/articulos/:id/detalle', resolveClienteAccess, h(async (req, res) => {
+  const articulo = await articulos.obtenerDetalle(req.params.id, req.clienteId);
+  if (!articulo) return falla(res, 404, 'Artículo No Encontrado');
+  res.json({ articulo });
 }));
 
 // Con Shopify conectado, los Artículos que vienen de Shopify se editan allá:

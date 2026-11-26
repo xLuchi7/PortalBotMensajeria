@@ -78,7 +78,7 @@ async function setBotChatsNuevos(id, activo) {
     .query('UPDATE Clientes SET botChatsNuevosActivo = @activo WHERE id = @id');
 }
 
-async function crearCliente({ razonSocial, cuit, telefono, email, zonaHoraria }) {
+async function crearCliente({ razonSocial, cuit, telefono, email, zonaHoraria, wabaId }) {
   const pool = await getPool();
   await pool
     .request()
@@ -87,9 +87,10 @@ async function crearCliente({ razonSocial, cuit, telefono, email, zonaHoraria })
     .input('telefono', sql.NVarChar, normalizePhone(telefono))
     .input('email', sql.NVarChar, email || null)
     .input('zonaHoraria', sql.NVarChar, zonaHoraria || 'Argentina Standard Time')
+    .input('wabaId', sql.NVarChar, wabaId || null)
     .query(`
-      INSERT INTO Clientes (razonSocial, cuit, telefono, email, zonaHoraria)
-      VALUES (@razonSocial, @cuit, @telefono, @email, @zonaHoraria)
+      INSERT INTO Clientes (razonSocial, cuit, telefono, email, zonaHoraria, wabaId)
+      VALUES (@razonSocial, @cuit, @telefono, @email, @zonaHoraria, @wabaId)
     `);
 }
 

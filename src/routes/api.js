@@ -11,6 +11,7 @@ const bot = require('../services/botService');
 const escalamientos = require('../services/escalamientoService');
 const pedidos = require('../services/pedidoService');
 const clientes = require('../services/clienteService');
+const meta = require('../services/metaService');
 const articulos = require('../services/articuloService');
 const consultas = require('../services/consultaService');
 const inicio = require('../services/inicioService');
@@ -106,8 +107,19 @@ function datosCliente(body) {
 router.post('/clientes', requireAdmin, h(async (req, res) => {
   const datos = datosCliente(req.body);
   if (!datos.razonSocial || !datos.cuit || !datos.telefono) return falla(res, 400, 'Completá Razón Social, CUIT Y Teléfono');
+
+  // Antes de crear el Cliente, buscamos su WABA entre las compartidas con el Tech
+  // Provider y la suscribimos — si esto falla no creamos el Cliente, porque sin la
+  // suscripción el bot nunca va a recibir sus mensajes (ver historial con Luma Uruguay).
+  let wabaId;
   try {
-    await clientes.crearCliente(datos);
+    wabaId = await meta.suscribirClientePorTelefono(datos.telefono);
+  } catch (err) {
+    return falla(res, 400, err.message);
+  }
+
+  try {
+    await clientes.crearCliente({ ...datos, wabaId });
   } catch (err) {
     if (esDuplicado(err)) return falla(res, 409, 'Ya existe un Cliente con ese CUIT o teléfono.');
     throw err;

@@ -91,6 +91,10 @@ export default function Chats() {
 
       <div className={`inbox card ${chatId ? 'has-chat' : ''}`}>
         <aside className="inbox-list">
+          <div className="inbox-list-head">
+            <span><Icon name="inbox" /> Conversaciones</span>
+            {datos && <small>{datos.rows.length ? `${datos.rows.length} en esta página` : ''}</small>}
+          </div>
           {!datos ? (
             <ListaCargando />
           ) : !datos.rows.length ? (
@@ -112,7 +116,7 @@ export default function Chats() {
           )}
         </aside>
 
-        <section className="inbox-panel">
+        <section className={`inbox-panel ${chat.data ? (chat.data.chat.botActivo ? 'bot-on' : 'bot-off') : ''}`}>
           {chatId ? (
             chat.error && !chat.data ? (
               <div className="empty-state inbox-empty">
@@ -135,10 +139,7 @@ export default function Chats() {
               />
             )
           ) : (
-            <div className="empty-state inbox-empty">
-              <Icon name="message" />
-              <p><strong>Elegí un chat</strong><br />para ver la conversación y pausar o activar el bot en ese número.</p>
-            </div>
+            <ComoFunciona />
           )}
         </section>
       </div>
@@ -238,16 +239,49 @@ function Avatar({ userId, nombre, grande = false }) {
   );
 }
 
+// Panel vacío: explica en tres pasos cómo se usa la bandeja.
+function ComoFunciona() {
+  return (
+    <div className="como-funciona">
+      <div className="como-funciona-icono"><Icon name="message" /></div>
+      <h2>Elegí un chat de la lista</h2>
+      <p>Vas a ver toda la conversación y vas a poder decidir quién responde.</p>
+      <ol className="como-funciona-pasos">
+        <li className="paso-verde">
+          <span className="paso-icono"><Icon name="bot" /></span>
+          <div><strong>El bot responde solo</strong><small>Mientras está activo, contesta cada mensaje de ese número.</small></div>
+        </li>
+        <li className="paso-rojo">
+          <span className="paso-icono"><Icon name="pause" /></span>
+          <div><strong>Pausalo para atender vos</strong><small>Con el interruptor de arriba del chat. Los chats pausados se marcan en rojo.</small></div>
+        </li>
+        <li className="paso-violeta">
+          <span className="paso-icono"><Icon name="send" /></span>
+          <div><strong>Respondé desde acá</strong><small>WhatsApp deja escribirle hasta 24 hs después de su último mensaje.</small></div>
+        </li>
+      </ol>
+    </div>
+  );
+}
+
 function ItemChat({ c, activo, nuevo, onAbrir }) {
   const quien = c.ultimoRol === 'user' ? null : c.ultimoEsError ? 'Error:' : c.ultimoEnviadoPor ? 'Vos:' : 'Bot:';
   return (
-    <button type="button" onClick={onAbrir}
+    <button type="button" onClick={onAbrir} aria-current={activo ? 'true' : undefined}
             className={`chat-item ${activo ? 'active' : ''} ${c.botActivo ? '' : 'is-paused'} ${nuevo && !activo ? 'is-new' : ''} ${c.ultimoRol === 'user' ? 'is-from-client' : ''}`}>
-      <Avatar userId={c.userId} nombre={c.nombreVisible} />
+      <div className="chat-item-avatar">
+        <Avatar userId={c.userId} nombre={c.nombreVisible} />
+        <span className={`chat-avatar-estado ${c.botActivo ? 'on' : 'off'}`} title={c.botActivo ? 'El bot responde este chat' : 'Bot pausado: respondés vos'}>
+          <Icon name={c.botActivo ? 'bot' : 'pause'} />
+        </span>
+      </div>
       <div className="chat-item-body">
         <div className="chat-item-top">
           <span className="chat-item-numero">{c.nombreVisible || c.numero}</span>
-          <span className="chat-item-fecha">{c.fechaCorta}</span>
+          <span className="chat-item-fecha">
+            {c.ultimoRol === 'user' && <span className="chat-item-espera" title="El cliente escribió último" />}
+            {c.fechaCorta}
+          </span>
         </div>
         <div className="chat-item-preview">
           {quien && <span className="chat-item-quien">{quien}</span>}
@@ -343,6 +377,18 @@ function Conversacion({ clienteId, chat, botGeneralApagado, envioHabilitado, onC
       {botGeneralApagado && (
         <div className="chat-aviso"><Icon name="power" /> El bot está apagado en general: no responde en ningún chat, tampoco en este. <Link to={`/clientes/${clienteId}/negocio`}>Encenderlo</Link></div>
       )}
+
+      <div className={`chat-estado-barra ${chat.botActivo ? 'on' : 'off'}`}>
+        <span className="chat-estado-texto">
+          <Icon name={chat.botActivo ? 'bot' : 'pause'} />
+          {chat.botActivo ? 'El bot está atendiendo este chat' : 'Estás atendiendo vos: el bot no responde en este chat'}
+        </span>
+        <span className="chat-leyenda" aria-label="Colores de los mensajes">
+          <span className="ley-cliente">Cliente</span>
+          <span className="ley-bot">Bot</span>
+          <span className="ley-humano">Vos / tu equipo</span>
+        </span>
+      </div>
 
       <Hilo mensajes={chat.mensajes} miEmail={usuario.email} />
 

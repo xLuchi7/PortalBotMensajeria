@@ -6,6 +6,7 @@ import Clientes from './pages/Clientes.jsx';
 import ClienteForm from './pages/ClienteForm.jsx';
 import Usuarios from './pages/Usuarios.jsx';
 import UsuarioForm from './pages/UsuarioForm.jsx';
+import InicioCliente from './pages/Inicio.jsx';
 import Chats from './pages/Chats.jsx';
 import Escalamientos from './pages/Escalamientos.jsx';
 import Consultas from './pages/Consultas.jsx';
@@ -59,7 +60,8 @@ export default function App() {
         <Route path="usuarios/:id/editar" element={<Privada admin><UsuarioForm /></Privada>} />
 
         <Route path="clientes/:clienteId">
-          <Route index element={<Navigate to="chats" replace />} />
+          <Route index element={<Navigate to="inicio" replace />} />
+          <Route path="inicio" element={<InicioCliente />} />
           <Route path="chats" element={<Chats />} />
           <Route path="mensajes" element={<RedirMensajes />} />
           <Route path="escalamientos" element={<Escalamientos />} />

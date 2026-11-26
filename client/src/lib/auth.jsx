@@ -57,5 +57,5 @@ export function inicioDe(usuario, shopifyPendiente) {
   if (usuario.rol === 'admin') return '/clientes';
   // Vino desde el link de instalación de Shopify: se lo lleva a terminar la conexión.
   if (shopifyPendiente) return `/clientes/${usuario.clienteId}/integraciones`;
-  return `/clientes/${usuario.clienteId}/chats`;
+  return `/clientes/${usuario.clienteId}/inicio`;
 }

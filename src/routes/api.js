@@ -527,6 +527,16 @@ router.post('/clientes/:clienteId/chats/:userId/nombre', resolveClienteAccess, h
   ok(res, nombre ? 'Nombre Guardado' : 'Nombre Borrado', { nombre });
 }));
 
+// Estado del chat elegido a mano (null o 'auto' = vuelve al calculado).
+router.post('/clientes/:clienteId/chats/:userId/estado', resolveClienteAccess, h(async (req, res) => {
+  const pedido = req.body.estado;
+  const estado = pedido == null || pedido === 'auto' ? null : String(pedido);
+  if (estado && !chats.ESTADOS_MANUALES.includes(estado)) return falla(res, 400, 'Estado Inválido');
+  const listo = await chats.setEstadoManual(req.clienteId, String(req.params.userId).slice(0, 100), estado, req.session.usuario.email);
+  if (!listo) return falla(res, 404, 'Chat No Encontrado');
+  ok(res, estado ? `Estado Cambiado A ${chats.ESTADOS[estado].label}` : 'Estado Automático Restablecido', { estado });
+}));
+
 // Saca el chat de "Revisión Humana" sin reactivar el bot (ej. lo atendieron por teléfono).
 router.post('/clientes/:clienteId/chats/:userId/revision/atender', resolveClienteAccess, h(async (req, res) => {
   const listo = await chats.atenderRevision(req.clienteId, String(req.params.userId).slice(0, 100), req.session.usuario.email);

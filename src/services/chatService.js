@@ -18,8 +18,14 @@ const ESTADOS = {
   consulta: { label: 'Solo Consulta', clase: 'badge-neutral' },
 };
 
-// Una fila por chat (clienteId + userId) con su último mensaje, el estado calculado
-// y si el bot está pausado para ese número. Sin fila en Chats = bot activo.
+// Estados que una persona puede elegir a mano (Chats.estadoManual). "Humano
+// Solicitado" no: depende de Chats.revisionHumana y siempre tapa al resto.
+const ESTADOS_MANUALES = ['reclamo', 'pedido', 'intencion', 'consulta'];
+
+// Una fila por chat (clienteId + userId) con su último mensaje, el estado y si el
+// bot está pausado para ese número. Sin fila en Chats = bot activo.
+// estadoAuto = el calculado; estado = el que se muestra (Humano Solicitado >
+// elegido a mano > calculado).
 const CHATS_CTE = `
   WITH ult AS (
     SELECT userId, MAX(id) AS ultId, COUNT(*) AS cantidad
@@ -27,7 +33,7 @@ const CHATS_CTE = `
     WHERE clienteId = @clienteId
     GROUP BY userId
   ),
-  bandeja AS (
+  calculo AS (
     SELECT
       u.userId, u.ultId, u.cantidad,
       m.content AS ultimoMensaje, m.role AS ultimoRol, m.platform, m.esError AS ultimoEsError, m.enviadoPor AS ultimoEnviadoPor,
@@ -36,17 +42,26 @@ const CHATS_CTE = `
       CAST(ISNULL(ch.botActivo, 1) AS bit) AS botActivo,
       ch.nombre, ch.nombrePerfil,
       CAST(ISNULL(ch.revisionHumana, 0) AS bit) AS revisionHumana, ch.revisionHumanaMotivo, ch.revisionHumanaEn,
+      ch.estadoManual,
       CASE
-        WHEN ch.revisionHumana = 1 THEN 'revision'
         WHEN EXISTS (SELECT 1 FROM Escalamientos e WHERE e.clienteId = @clienteId AND e.userId = u.userId AND e.estado <> 'resuelto' AND e.motivo NOT LIKE '[[]Revisión humana]%') THEN 'reclamo'
         WHEN EXISTS (SELECT 1 FROM Pedidos p WHERE p.clienteId = @clienteId AND p.userId = u.userId) THEN 'pedido'
         WHEN EXISTS (SELECT 1 FROM ConsultasArticulo ca WHERE ca.clienteId = @clienteId AND ca.userId = u.userId AND ca.encontrado = 1) THEN 'intencion'
         ELSE 'consulta'
-      END AS estado
+      END AS estadoAuto
     FROM ult u
     JOIN Mensajes m ON m.id = u.ultId
     JOIN Clientes c ON c.id = @clienteId
     LEFT JOIN Chats ch ON ch.clienteId = @clienteId AND ch.userId = u.userId
+  ),
+  bandeja AS (
+    SELECT b.*,
+      CASE
+        WHEN b.revisionHumana = 1 THEN 'revision'
+        WHEN b.estadoManual IN ('reclamo', 'pedido', 'intencion', 'consulta') THEN b.estadoManual
+        ELSE b.estadoAuto
+      END AS estado
+    FROM calculo b
   )
 `;
 
@@ -173,7 +188,9 @@ async function obtenerChat(clienteId, userId) {
       .input('clienteId', sql.Int, clienteId)
       .input('userId', sql.NVarChar, userId)
       .query(`${CHATS_CTE}
-        SELECT ch.userId, ch.cantidad, ch.platform, ch.botActivo, ch.estado, ch.nombre, ch.nombrePerfil,
+        SELECT ch.userId, ch.cantidad, ch.platform, ch.botActivo, ch.estado, ch.estadoAuto, ch.estadoManual, ch.nombre, ch.nombrePerfil,
+          x.estadoManualPor,
+          FORMAT(x.estadoManualEn AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy HH:mm') AS estadoManualEn,
           ch.revisionHumana, ch.revisionHumanaMotivo,
           FORMAT(ch.revisionHumanaEn AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy HH:mm') AS revisionHumanaFecha,
           x.botActualizadoPor,
@@ -194,6 +211,7 @@ async function obtenerChat(clienteId, userId) {
     numero: formatearNumero(chat.userId),
     nombreVisible: chat.nombre || chat.nombrePerfil || null,
     estadoInfo: ESTADOS[chat.estado],
+    estadoAutoInfo: ESTADOS[chat.estadoAuto],
     // WhatsApp solo deja mandar texto libre hasta 24 h después del último mensaje del cliente.
     ventanaAbierta: chat.minutosDesdeCliente != null && chat.minutosDesdeCliente < VENTANA_MINUTOS,
     ventanaRestante: chat.minutosDesdeCliente != null ? Math.max(0, VENTANA_MINUTOS - chat.minutosDesdeCliente) : 0,
@@ -203,33 +221,31 @@ async function obtenerChat(clienteId, userId) {
 
 // Pausa o reactiva el bot para un número. El bot lo lee en cada mensaje entrante
 // (y otra vez antes de mandar la respuesta), así que el cambio corta al instante.
+// Al reactivar un chat pausado, el procedure corta el historial que ve Claude
+// (Chats.historialDesdeId): arranca de cero desde ahí, para que no relea un
+// "quiero hablar con una persona" ya atendido y se vuelva a pausar solo.
 // Devuelve false si ese número no tiene mensajes con este Cliente.
 async function setBotChat(clienteId, userId, activo, actualizadoPor) {
-  const pool = await getPool();
-  const result = await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .input('userId', sql.NVarChar, userId)
-    .input('activo', sql.Bit, activo)
-    .input('por', sql.NVarChar, actualizadoPor || null)
-    .query(`
-      IF NOT EXISTS (SELECT 1 FROM Mensajes WHERE clienteId = @clienteId AND userId = @userId)
-        SELECT CAST(0 AS bit) AS ok;
-      ELSE
-      BEGIN
-        MERGE Chats WITH (HOLDLOCK) AS t
-        USING (SELECT @clienteId AS clienteId, @userId AS userId) AS s
-          ON t.clienteId = s.clienteId AND t.userId = s.userId
-        WHEN MATCHED THEN
-          UPDATE SET botActivo = @activo, botActualizadoEn = SYSUTCDATETIME(), botActualizadoPor = @por,
-            revisionHumana = CASE WHEN @activo = 1 THEN 0 ELSE revisionHumana END
-        WHEN NOT MATCHED THEN
-          INSERT (clienteId, userId, botActivo, botActualizadoEn, botActualizadoPor)
-          VALUES (@clienteId, @userId, @activo, SYSUTCDATETIME(), @por);
-        SELECT CAST(1 AS bit) AS ok;
-      END
-    `);
-  return Boolean(result.recordset[0]?.ok);
+  const r = await ejecutar('dbo.usp_Portal_ChatBotSet', {
+    clienteId: [sql.Int, clienteId],
+    userId: [sql.NVarChar(100), userId],
+    activo: [sql.Bit, activo],
+    por: [sql.NVarChar(255), actualizadoPor ? String(actualizadoPor).slice(0, 255) : null],
+  });
+  return Boolean(r.recordset[0]?.ok);
+}
+
+// Estado elegido a mano (null = volver al automático). false = número sin mensajes
+// con este Cliente o estado inválido.
+async function setEstadoManual(clienteId, userId, estado, por) {
+  if (estado != null && !ESTADOS_MANUALES.includes(estado)) return false;
+  const r = await ejecutar('dbo.usp_Portal_ChatEstadoManual', {
+    clienteId: [sql.Int, clienteId],
+    userId: [sql.NVarChar(100), userId],
+    estado: [sql.NVarChar(20), estado ?? null],
+    por: [sql.NVarChar(255), por ? String(por).slice(0, 255) : null],
+  });
+  return Boolean(r.recordset[0]?.ok);
 }
 
 // Nombre propio para un número (vacío = volver a mostrar el de WhatsApp o el número).
@@ -369,4 +385,4 @@ async function listarReclamosBandeja(clienteId, { page = 1, estado, q } = {}) {
   };
 }
 
-module.exports = { ESTADOS, listarChats, obtenerChat, setBotChat, setNombreChat, atenderRevision, setEstadoHumano, listarHumanoSolicitado, listarReclamosBandeja, huellaBandeja };
+module.exports = { ESTADOS, ESTADOS_MANUALES, listarChats, obtenerChat, setBotChat, setEstadoManual, setNombreChat, atenderRevision, setEstadoHumano, listarHumanoSolicitado, listarReclamosBandeja, huellaBandeja };

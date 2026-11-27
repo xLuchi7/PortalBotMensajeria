@@ -3647,3 +3647,31 @@ button.log-evento:hover { text-decoration: underline; }
 .chat-reclamo.is-resuelto { background: var(--success-soft); color: #166534; }
 .chat-reclamo.is-resuelto > .icon { color: var(--success); }
 .chat-reclamo .badge-select, .chat-reclamo .badge { flex: none; }
+
+/* ── Estado del chat (elegido a mano) ── */
+.chat-header-sub .chat-estado-editar { margin-left: 0.3rem; width: 24px; height: 24px; }
+.chat-header-sub .chat-estado-editar + .tag { margin-left: 0; }
+.chat-header-sub .chat-estado-editar .icon { width: 13px; height: 13px; }
+.estado-opciones { display: grid; gap: 0.5rem; }
+.estado-opcion {
+  --c: var(--primary); --c-soft: var(--primary-soft);
+  position: relative; display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.65rem 0.8rem; border: 1.5px solid var(--border); border-radius: 10px;
+  cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease;
+}
+.estado-opcion:hover { border-color: var(--c); }
+.estado-opcion.is-on { border-color: var(--c); background: var(--c-soft); }
+.estado-opcion:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--primary-soft); }
+.estado-opcion input { position: absolute; opacity: 0; pointer-events: none; }
+.estado-opcion.estado-reclamo { --c: var(--danger); --c-soft: var(--danger-soft); }
+.estado-opcion.estado-pedido { --c: var(--success); --c-soft: var(--success-soft); }
+.estado-opcion.estado-intencion { --c: var(--info); --c-soft: var(--info-soft); }
+.estado-opcion.estado-consulta { --c: #64748b; --c-soft: #f1f5f9; }
+.estado-punto { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--c); }
+.estado-auto .estado-punto { width: 22px; height: 22px; display: grid; place-items: center; background: var(--c-soft); color: var(--c); }
+.estado-auto .estado-punto .icon { width: 13px; height: 13px; }
+.estado-texto { display: flex; flex-direction: column; min-width: 0; }
+.estado-texto strong { font-size: 0.9rem; }
+.estado-texto small { font-size: 0.78rem; color: var(--text-muted); }
+.estado-nota { display: flex; align-items: center; gap: 0.4rem; margin: 0.9rem 0 0; font-size: 0.8rem; color: #991b1b; }
+.estado-nota .icon { width: 15px; height: 15px; flex: none; }

@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } f
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
 import BotSwitch from '../components/BotSwitch.jsx';
+import EstadoChat from '../components/EstadoChat.jsx';
 import { Pagination, useTitulo } from '../components/ui.jsx';
 import { useAvisar } from '../components/Toasts.jsx';
 import { useConfirm } from '../components/Confirm.jsx';
@@ -27,12 +28,16 @@ const MODOS = {
     sub: 'Chats donde pidieron hablar con una persona. El bot quedó pausado: leé lo que pasó y respondele desde acá.',
     lista: '/humano-solicitado',
     vacio: 'Nadie pidió hablar con una persona todavía.',
+    estadoDefault: 'pendiente',
+    vacioDefault: 'No hay chats pendientes de atender 🎉',
   },
   reclamos: {
     titulo: 'Reclamos',
     sub: 'Reclamos, devoluciones o pedidos fuera de lo común que registró el bot. Leé el chat, respondele y cambiá el estado de cada reclamo.',
     lista: '/reclamos-bandeja',
     vacio: 'No hay reclamos todavía 🎉',
+    estadoDefault: 'pendiente',
+    vacioDefault: 'No hay reclamos pendientes 🎉',
   },
 };
 
@@ -42,9 +47,13 @@ export default function Chats({ modo = 'chats' }) {
   const { clienteId } = useParams();
   const [params, setParams] = useSearchParams();
   const { cliente } = useCliente();
+  // Atención Humana y Reclamos abren en "Pendientes": sin ?estado se usa el
+  // default, y "Todos" queda explícito en la URL (?estado=todos).
+  const TODOS = m.estadoDefault ? 'todos' : '';
+  const estadoUrl = params.get('estado');
   const filtros = {
     q: params.get('q') || '',
-    estado: params.get('estado') || '',
+    estado: estadoUrl === null ? (m.estadoDefault || '') : estadoUrl === 'todos' ? '' : estadoUrl,
     bot: params.get('bot') || '',
     page: params.get('page') || '',
   };
@@ -79,7 +88,7 @@ export default function Chats({ modo = 'chats' }) {
           <div className="page-actions">
             <span className="pill"><span className="live-dot" title="Se actualiza solo" /><strong>{resumen.total}</strong> {plural(resumen.total, 'chat')}</span>
             {modo !== 'chats' && resumen.pendiente > 0 && (
-              <button type="button" className="pill pill-danger pill-btn" onClick={() => cambiar({ estado: filtros.estado === 'pendiente' ? '' : 'pendiente', page: '' })}>
+              <button type="button" className="pill pill-danger pill-btn" onClick={() => cambiar({ estado: filtros.estado === 'pendiente' ? TODOS : 'pendiente', page: '' })}>
                 <Icon name="user" /> <strong>{resumen.pendiente}</strong> {plural(resumen.pendiente, 'pendiente')}
               </button>
             )}
@@ -103,12 +112,12 @@ export default function Chats({ modo = 'chats' }) {
       <div className="chat-filtros">
         <Buscador valor={filtros.q} onBuscar={q => cambiar({ q, page: '' })} />
         <div className="chip-row">
-          <button type="button" className={`chip ${!filtros.estado && !filtros.bot ? 'active' : ''}`} onClick={() => cambiar({ estado: '', bot: '', page: '' })}>
+          <button type="button" className={`chip ${!filtros.estado && !filtros.bot ? 'active' : ''}`} onClick={() => cambiar({ estado: TODOS, bot: '', page: '' })}>
             Todos <span>{resumen ? resumen.total : '·'}</span>
           </button>
           {Object.entries(datos?.estados || {}).map(([clave, e]) => (
             <button key={clave} type="button" className={`chip chip-${clave} ${filtros.estado === clave ? 'active' : ''}`}
-                    onClick={() => cambiar({ estado: filtros.estado === clave ? '' : clave, page: '' })}>
+                    onClick={() => cambiar({ estado: filtros.estado === clave ? TODOS : clave, page: '' })}>
               {e.label} <span>{resumen?.[clave] ?? '·'}</span>
             </button>
           ))}
@@ -132,8 +141,8 @@ export default function Chats({ modo = 'chats' }) {
           ) : !datos.rows.length ? (
             <div className="empty-state">
               <Icon name="inbox" />
-              <p>{hayFiltro ? 'No hay chats con ese filtro.' : m.vacio}</p>
-              {hayFiltro && <button type="button" className="btn btn-outline btn-sm" onClick={() => cambiar({ q: '', estado: '', bot: '', page: '' })}>Ver todos</button>}
+              <p>{!hayFiltro ? m.vacio : !filtros.q && !filtros.bot && filtros.estado === m.estadoDefault ? m.vacioDefault : 'No hay chats con ese filtro.'}</p>
+              {hayFiltro && <button type="button" className="btn btn-outline btn-sm" onClick={() => cambiar({ q: '', estado: TODOS, bot: '', page: '' })}>Ver todos</button>}
             </div>
           ) : (
             <>
@@ -514,7 +523,7 @@ function Conversacion({ clienteId, chat, botGeneralApagado, envioHabilitado, onC
               <><span title="Nombre de su perfil de WhatsApp">“{chat.nombrePerfil}”</span> · </>
             )}
             {chat.cantidad} {plural(chat.cantidad, 'mensaje')}
-            <span className={`tag ${chat.estadoInfo.clase}`}>{chat.estadoInfo.label}</span>
+            <EstadoChat base={base} chat={chat} setChat={setChat} onCambio={onCambio} />
           </span>
         </div>
         <BotSwitch

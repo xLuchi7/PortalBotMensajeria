@@ -3675,3 +3675,38 @@ button.log-evento:hover { text-decoration: underline; }
 .estado-texto small { font-size: 0.78rem; color: var(--text-muted); }
 .estado-nota { display: flex; align-items: center; gap: 0.4rem; margin: 0.9rem 0 0; font-size: 0.8rem; color: #991b1b; }
 .estado-nota .icon { width: 15px; height: 15px; flex: none; }
+
+/* ── Aprendizajes ── */
+.aprendizajes-tabla td { vertical-align: top; }
+.aprendizajes-tabla tr.is-inactivo td { color: var(--text-soft); }
+.aprendizaje-pregunta { font-weight: 600; min-width: 200px; max-width: 320px; }
+.aprendizaje-respuesta { white-space: pre-wrap; min-width: 240px; }
+.aprendizaje-meta { display: block; margin-top: 0.3rem; font-size: 0.75rem; font-weight: 400; color: var(--text-muted); }
+.aprendizaje-nota {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft);
+  font-size: 0.85rem;
+}
+.aprendizaje-form label { display: block; margin-bottom: 0.9rem; }
+.aprendizaje-form .field-hint { display: block; text-align: right; font-size: 0.72rem; margin-top: 0.2rem; }
+.burbuja-ensenar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-right: 0.6rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: #166534;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.burbuja-ensenar:hover, .burbuja-ensenar:focus-visible { opacity: 1; text-decoration: underline; }
+.burbuja-ensenar .icon { width: 12px; height: 12px; }
+@media (max-width: 760px) {
+  .aprendizaje-pregunta, .aprendizaje-respuesta { min-width: 160px; }
+}

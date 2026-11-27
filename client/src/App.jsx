@@ -13,6 +13,7 @@ import Pedidos from './pages/Pedidos.jsx';
 import Articulos from './pages/Articulos.jsx';
 import ArticuloForm from './pages/ArticuloForm.jsx';
 import Negocio from './pages/Negocio.jsx';
+import Aprendizajes from './pages/Aprendizajes.jsx';
 import Integraciones from './pages/Integraciones.jsx';
 import Logs from './pages/Logs.jsx';
 import NoEncontrada from './pages/NoEncontrada.jsx';
@@ -74,6 +75,7 @@ export default function App() {
           <Route path="articulos/nuevo" element={<ArticuloForm />} />
           <Route path="articulos/:id/editar" element={<ArticuloForm />} />
           <Route path="negocio" element={<Negocio />} />
+          <Route path="aprendizajes" element={<Aprendizajes />} />
           <Route path="integraciones" element={<Integraciones />} />
         </Route>
 

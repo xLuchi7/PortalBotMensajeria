@@ -1,6 +1,8 @@
 module.exports = {
   port: process.env.PORT || 3100,
   sessionSecret: process.env.SESSION_SECRET,
+  sessionCookie: 'portal.sid',
+  produccion: process.env.NODE_ENV === 'production' || Boolean(process.env.RAILWAY_ENVIRONMENT),
   // Opcional. URL pública del portal, sin "/" final. Si no está, se usa el
   // dominio desde el que el admin cargó las credenciales de Shopify.
   appUrl: (process.env.APP_URL || '').replace(/\/+$/, ''),

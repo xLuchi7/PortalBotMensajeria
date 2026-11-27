@@ -59,12 +59,20 @@ function crearState({ clienteId, usuarioId, shop, appId }) {
   return `${payload}.${firmar(payload)}`;
 }
 
+// Cada state sirve una sola vez: un link de callback que quedó en el historial o
+// en un log no se puede volver a usar. Se recuerdan los nonces mientras el state vive.
+const usados = new Map(); // nonce -> vence (ms)
+
 function leerState(state) {
   const [payload, firma] = String(state || '').split('.');
   if (!payload || !firma || !igualesSeguro(firma, firmar(payload))) return null;
   try {
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
     if (Date.now() - data.t > STATE_TTL_MS) return null;
+    const ahora = Date.now();
+    for (const [n, vence] of usados) if (vence < ahora) usados.delete(n);
+    if (usados.has(data.n)) return null;
+    usados.set(data.n, data.t + STATE_TTL_MS);
     return { clienteId: data.c, usuarioId: data.u, shop: data.s, appId: data.a };
   } catch {
     return null;
@@ -83,9 +91,13 @@ function urlAutorizacion({ app, shop, state }) {
 
 // HMAC de los query params con que Shopify vuelve (callback y app URL):
 // todos menos "hmac", ordenados, "k=v" unidos con "&", HMAC-SHA256 hex.
+// Además, el timestamp firmado tiene que ser reciente: un link viejo no se puede reusar.
+const TIMESTAMP_MAX_S = 10 * 60;
 function verificarHmacQuery(query, secret) {
   const { hmac, ...resto } = query;
   if (!hmac || !secret) return false;
+  const ts = Number(resto.timestamp);
+  if (resto.timestamp !== undefined && (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > TIMESTAMP_MAX_S)) return false;
   const mensaje = Object.keys(resto)
     .sort()
     .map(k => `${k}=${Array.isArray(resto[k]) ? resto[k].join(',') : resto[k]}`)

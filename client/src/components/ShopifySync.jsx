@@ -17,12 +17,19 @@ export function useShopifySync(clienteId, { alTerminar } = {}) {
     return () => { activo.current = false; clearTimeout(timer.current); };
   }, []);
 
-  const poll = useCallback(async (jobId) => {
+  // Un corte de red no da por perdida la sync (sigue en el servidor): se reintenta
+  // hasta 3 veces antes de mostrar el error. Un 404 (job vencido) corta de una.
+  const poll = useCallback(async (jobId, fallos = 0) => {
     let e;
     try {
       e = await api(`/clientes/${clienteId}/shopify/sync/${jobId}`);
     } catch (err) {
-      if (activo.current) setEstado({ terminado: true, errorFatal: err.message || 'Se perdió la conexión con el servidor.' });
+      if (!activo.current) return;
+      if (err.status !== 404 && fallos < 3) {
+        timer.current = setTimeout(() => poll(jobId, fallos + 1), 2000 * (fallos + 1));
+        return;
+      }
+      setEstado({ terminado: true, errorFatal: err.message || 'Se perdió la conexión con el servidor.' });
       return;
     }
     if (!activo.current) return;

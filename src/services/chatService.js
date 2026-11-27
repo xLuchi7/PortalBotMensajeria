@@ -1,4 +1,4 @@
-const { getPool, ejecutar, sql } = require('./db');
+const { ejecutar, sql } = require('./db');
 const { numero: formatearNumero } = require('../viewHelpers');
 
 const PAGE_SIZE = 25;
@@ -22,48 +22,10 @@ const ESTADOS = {
 // Solicitado" no: depende de Chats.revisionHumana y siempre tapa al resto.
 const ESTADOS_MANUALES = ['reclamo', 'pedido', 'intencion', 'consulta'];
 
-// Una fila por chat (clienteId + userId) con su último mensaje, el estado y si el
-// bot está pausado para ese número. Sin fila en Chats = bot activo.
+// La bandeja (una fila por número con su último mensaje y su estado) se arma en
+// usp_Portal_ChatsListar; el estado de un solo chat, en usp_Portal_ChatObtener.
 // estadoAuto = el calculado; estado = el que se muestra (Humano Solicitado >
-// elegido a mano > calculado).
-const CHATS_CTE = `
-  WITH ult AS (
-    SELECT userId, MAX(id) AS ultId, COUNT(*) AS cantidad
-    FROM Mensajes
-    WHERE clienteId = @clienteId
-    GROUP BY userId
-  ),
-  calculo AS (
-    SELECT
-      u.userId, u.ultId, u.cantidad,
-      m.content AS ultimoMensaje, m.role AS ultimoRol, m.platform, m.esError AS ultimoEsError, m.enviadoPor AS ultimoEnviadoPor,
-      CAST(m.createdAt AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria AS datetime2) AS ultimaFechaLocal,
-      CAST(SYSUTCDATETIME() AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria AS date) AS hoyLocal,
-      CAST(ISNULL(ch.botActivo, 1) AS bit) AS botActivo,
-      ch.nombre, ch.nombrePerfil,
-      CAST(ISNULL(ch.revisionHumana, 0) AS bit) AS revisionHumana, ch.revisionHumanaMotivo, ch.revisionHumanaEn,
-      ch.estadoManual,
-      CASE
-        WHEN EXISTS (SELECT 1 FROM Escalamientos e WHERE e.clienteId = @clienteId AND e.userId = u.userId AND e.estado <> 'resuelto' AND e.motivo NOT LIKE '[[]Revisión humana]%') THEN 'reclamo'
-        WHEN EXISTS (SELECT 1 FROM Pedidos p WHERE p.clienteId = @clienteId AND p.userId = u.userId) THEN 'pedido'
-        WHEN EXISTS (SELECT 1 FROM ConsultasArticulo ca WHERE ca.clienteId = @clienteId AND ca.userId = u.userId AND ca.encontrado = 1) THEN 'intencion'
-        ELSE 'consulta'
-      END AS estadoAuto
-    FROM ult u
-    JOIN Mensajes m ON m.id = u.ultId
-    JOIN Clientes c ON c.id = @clienteId
-    LEFT JOIN Chats ch ON ch.clienteId = @clienteId AND ch.userId = u.userId
-  ),
-  bandeja AS (
-    SELECT b.*,
-      CASE
-        WHEN b.revisionHumana = 1 THEN 'revision'
-        WHEN b.estadoManual IN ('reclamo', 'pedido', 'intencion', 'consulta') THEN b.estadoManual
-        ELSE b.estadoAuto
-      END AS estado
-    FROM calculo b
-  )
-`;
+// elegido a mano > calculado). Sin fila en Chats = bot activo.
 
 function fechaCorta(local, hoy) {
   // local/hoy vienen como datetime2/date ya pasados a la zona del Cliente, y mssql
@@ -92,44 +54,18 @@ function filtrosDe({ q, estado, bot }) {
 }
 
 async function listarChats(clienteId, { page = 1, q, estado, bot } = {}) {
-  const pool = await getPool();
-  const offset = (page - 1) * PAGE_SIZE;
   const f = filtrosDe({ q, estado, bot });
-
-  const [rowsResult, resumenResult] = await Promise.all([
-    pool
-      .request()
-      .input('clienteId', sql.Int, clienteId)
-      .input('q', sql.NVarChar, f.q)
-      .input('qDigitos', sql.NVarChar, f.qDigitos)
-      .input('estado', sql.NVarChar, f.estado)
-      .input('bot', sql.Bit, f.bot)
-      .input('offset', sql.Int, offset)
-      .input('pageSize', sql.Int, PAGE_SIZE)
-      .query(`${CHATS_CTE}
-        SELECT *, COUNT(*) OVER () AS totalFiltrado
-        FROM bandeja
-        WHERE (@q IS NULL OR nombre LIKE @q OR nombrePerfil LIKE @q OR userId LIKE @q OR userId LIKE @qDigitos)
-          AND (@estado IS NULL OR estado = @estado)
-          AND (@bot IS NULL OR botActivo = @bot)
-        ORDER BY ultId DESC
-        OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
-      `),
-    pool
-      .request()
-      .input('clienteId', sql.Int, clienteId)
-      .query(`${CHATS_CTE}
-        SELECT
-          COUNT(*) AS total,
-          SUM(CASE WHEN botActivo = 0 THEN 1 ELSE 0 END) AS pausados,
-          SUM(CASE WHEN estado = 'revision' THEN 1 ELSE 0 END) AS revision,
-          SUM(CASE WHEN estado = 'reclamo' THEN 1 ELSE 0 END) AS reclamo,
-          SUM(CASE WHEN estado = 'pedido' THEN 1 ELSE 0 END) AS pedido,
-          SUM(CASE WHEN estado = 'intencion' THEN 1 ELSE 0 END) AS intencion,
-          SUM(CASE WHEN estado = 'consulta' THEN 1 ELSE 0 END) AS consulta
-        FROM bandeja
-      `),
-  ]);
+  const resultado = await ejecutar('dbo.usp_Portal_ChatsListar', {
+    clienteId: [sql.Int, clienteId],
+    q: [sql.NVarChar(60), f.q],
+    qDigitos: [sql.NVarChar(60), f.qDigitos],
+    estado: [sql.NVarChar(20), f.estado],
+    bot: [sql.Bit, f.bot],
+    page: [sql.Int, page],
+    pageSize: [sql.Int, PAGE_SIZE],
+  });
+  const rowsResult = { recordset: resultado.recordsets[0] };
+  const resumenResult = { recordset: resultado.recordsets[1] };
 
   const rows = rowsResult.recordset.map(r => ({
     ...r,
@@ -163,46 +99,14 @@ async function listarChats(clienteId, { page = 1, q, estado, bot } = {}) {
 // Conversación completa de un número (los últimos MAX_MENSAJES_CHAT), más el estado
 // del interruptor. null si ese número nunca le escribió a este Cliente.
 async function obtenerChat(clienteId, userId) {
-  const pool = await getPool();
-  const [mensajesResult, chatResult] = await Promise.all([
-    pool
-      .request()
-      .input('clienteId', sql.Int, clienteId)
-      .input('userId', sql.NVarChar, userId)
-      .input('max', sql.Int, MAX_MENSAJES_CHAT)
-      .query(`
-        SELECT * FROM (
-          SELECT TOP (@max)
-            m.id, m.role, m.content, m.esError, m.platform, m.enviadoPor,
-            FORMAT(m.createdAt AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'HH:mm') AS hora,
-            FORMAT(m.createdAt AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy') AS dia
-          FROM Mensajes m
-          JOIN Clientes c ON c.id = m.clienteId
-          WHERE m.clienteId = @clienteId AND m.userId = @userId
-          ORDER BY m.id DESC
-        ) ultimos
-        ORDER BY id ASC
-      `),
-    pool
-      .request()
-      .input('clienteId', sql.Int, clienteId)
-      .input('userId', sql.NVarChar, userId)
-      .query(`${CHATS_CTE}
-        SELECT ch.userId, ch.cantidad, ch.platform, ch.botActivo, ch.estado, ch.estadoAuto, ch.estadoManual, ch.nombre, ch.nombrePerfil,
-          x.estadoManualPor,
-          FORMAT(x.estadoManualEn AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy HH:mm') AS estadoManualEn,
-          ch.revisionHumana, ch.revisionHumanaMotivo,
-          FORMAT(ch.revisionHumanaEn AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy HH:mm') AS revisionHumanaFecha,
-          x.botActualizadoPor,
-          FORMAT(x.botActualizadoEn AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy HH:mm') AS botActualizadoEn,
-          (SELECT DATEDIFF(MINUTE, MAX(mu.createdAt), SYSUTCDATETIME()) FROM Mensajes mu
-            WHERE mu.clienteId = @clienteId AND mu.userId = ch.userId AND mu.role = 'user') AS minutosDesdeCliente
-        FROM bandeja ch
-        JOIN Clientes c ON c.id = @clienteId
-        LEFT JOIN Chats x ON x.clienteId = @clienteId AND x.userId = ch.userId
-        WHERE ch.userId = @userId
-      `),
-  ]);
+  const r = await ejecutar('dbo.usp_Portal_ChatObtener', {
+    clienteId: [sql.Int, clienteId],
+    userId: [sql.NVarChar(100), userId],
+    max: [sql.Int, MAX_MENSAJES_CHAT],
+  });
+  const [mensajes, chatRows] = r.recordsets;
+  const chatResult = { recordset: chatRows };
+  const mensajesResult = { recordset: mensajes };
 
   const chat = chatResult.recordset[0];
   if (!chat) return null;
@@ -252,25 +156,11 @@ async function setEstadoManual(clienteId, userId, estado, por) {
 // Si el chat todavía no tiene fila en Chats (chats de antes de que existiera la
 // tabla), se crea con el bot activo, que es como ya venía funcionando.
 async function setNombreChat(clienteId, userId, nombre) {
-  const pool = await getPool();
-  const result = await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .input('userId', sql.NVarChar, userId)
-    .input('nombre', sql.NVarChar, nombre ? String(nombre).trim().slice(0, 100) : null)
-    .query(`
-      IF NOT EXISTS (SELECT 1 FROM Mensajes WHERE clienteId = @clienteId AND userId = @userId)
-        SELECT CAST(0 AS bit) AS ok;
-      ELSE
-      BEGIN
-        MERGE Chats WITH (HOLDLOCK) AS t
-        USING (SELECT @clienteId AS clienteId, @userId AS userId) AS s
-          ON t.clienteId = s.clienteId AND t.userId = s.userId
-        WHEN MATCHED THEN UPDATE SET nombre = @nombre
-        WHEN NOT MATCHED THEN INSERT (clienteId, userId, botActivo, nombre) VALUES (@clienteId, @userId, 1, @nombre);
-        SELECT CAST(1 AS bit) AS ok;
-      END
-    `);
+  const result = await ejecutar('dbo.usp_Portal_ChatNombreSet', {
+    clienteId: [sql.Int, clienteId],
+    userId: [sql.NVarChar(100), userId],
+    nombre: [sql.NVarChar(100), nombre ? String(nombre).trim().slice(0, 100) : null],
+  });
   return Boolean(result.recordset[0]?.ok);
 }
 
@@ -278,16 +168,7 @@ async function setNombreChat(clienteId, userId, nombre) {
 // último mensaje (sube con cada mensaje nuevo, de cualquier chat) más cuántos
 // chats tienen el bot pausado. Si cambia, la página se vuelve a pedir.
 async function huellaBandeja(clienteId) {
-  const pool = await getPool();
-  const result = await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .query(`
-      SELECT
-        (SELECT MAX(id) FROM Mensajes WHERE clienteId = @clienteId) AS ultimoId,
-        (SELECT COUNT(*) FROM Chats WHERE clienteId = @clienteId AND botActivo = 0) AS pausados,
-        (SELECT COUNT(*) FROM Chats WHERE clienteId = @clienteId AND revisionHumana = 1) AS revision
-    `);
+  const result = await ejecutar('dbo.usp_Portal_ChatsHuella', { clienteId: [sql.Int, clienteId] });
   const r = result.recordset[0] || {};
   return `${r.ultimoId || 0}-${r.pausados || 0}-${r.revision || 0}`;
 }

@@ -1,4 +1,5 @@
-const { getPool, sql } = require('./db');
+const { ejecutar, sql } = require('./db');
+const clientes = require('./clienteService');
 const bot = require('./botService');
 
 // Avisos automáticos por WhatsApp que dispara Shopify (pago recibido, pedido
@@ -47,12 +48,7 @@ function limpiarConfig(entrada = {}) {
 }
 
 async function leerConfig(clienteId) {
-  const pool = await getPool();
-  const r = await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .query('SELECT avisosConfig FROM Clientes WHERE id = @clienteId');
-  const crudo = r.recordset[0]?.avisosConfig;
+  const crudo = await clientes.obtenerAvisosConfig(clienteId);
   if (!crudo) return configVacia();
   try {
     return limpiarConfig(JSON.parse(crudo));
@@ -63,47 +59,32 @@ async function leerConfig(clienteId) {
 
 async function guardarConfig(clienteId, entrada) {
   const cfg = limpiarConfig(entrada);
-  const pool = await getPool();
-  await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .input('cfg', sql.NVarChar(sql.MAX), JSON.stringify(cfg))
-    .query('UPDATE Clientes SET avisosConfig = @cfg WHERE id = @clienteId');
+  await clientes.setAvisosConfig(clienteId, JSON.stringify(cfg));
   return cfg;
 }
 
-// Reserva la clave. Si ya existía, otro webhook (o un reintento de Shopify) ya
-// mandó este aviso.
-async function reservar(pool, { clienteId, userId, tipo, clave, pedidoId, articuloId }) {
-  try {
-    const r = await pool
-      .request()
-      .input('clienteId', sql.Int, clienteId)
-      .input('userId', sql.NVarChar(100), userId)
-      .input('tipo', sql.NVarChar(30), tipo)
-      .input('clave', sql.NVarChar(150), clave)
-      .input('pedidoId', sql.Int, pedidoId ?? null)
-      .input('articuloId', sql.Int, articuloId ?? null)
-      .query(`
-        INSERT INTO AvisosWhatsApp (clienteId, userId, tipo, clave, pedidoId, articuloId, estado)
-        OUTPUT INSERTED.id
-        VALUES (@clienteId, @userId, @tipo, @clave, @pedidoId, @articuloId, 'enviando')
-      `);
-    return r.recordset[0].id;
-  } catch (err) {
-    if (err.number === 2627 || err.number === 2601) return null; // clave duplicada
-    throw err;
-  }
+// Reserva la clave. null si ya existía: otro webhook (o un reintento de Shopify)
+// ya mandó este aviso.
+async function reservar({ clienteId, userId, tipo, clave, pedidoId, articuloId }) {
+  const r = await ejecutar('dbo.usp_Portal_AvisoReservar', {
+    clienteId: [sql.Int, clienteId],
+    userId: [sql.NVarChar(100), userId],
+    tipo: [sql.NVarChar(30), tipo],
+    clave: [sql.NVarChar(150), clave],
+    pedidoId: [sql.Int, pedidoId ?? null],
+    articuloId: [sql.Int, articuloId ?? null],
+  });
+  return r.recordset[0]?.id ?? null;
 }
 
-async function cerrar(pool, id, { estado, via = null, detalle = null }) {
-  await pool
-    .request()
-    .input('id', sql.Int, id)
-    .input('estado', sql.NVarChar(30), estado)
-    .input('via', sql.NVarChar(20), via)
-    .input('detalle', sql.NVarChar(1000), detalle ? String(detalle).slice(0, 1000) : null)
-    .query('UPDATE AvisosWhatsApp SET estado = @estado, via = @via, detalle = @detalle WHERE id = @id');
+async function cerrar(clienteId, id, { estado, via = null, detalle = null }) {
+  await ejecutar('dbo.usp_Portal_AvisoCerrar', {
+    id: [sql.Int, id],
+    clienteId: [sql.Int, clienteId],
+    estado: [sql.NVarChar(30), estado],
+    via: [sql.NVarChar(20), via],
+    detalle: [sql.NVarChar(1000), detalle ? String(detalle).slice(0, 1000) : null],
+  });
 }
 
 /**
@@ -117,39 +98,38 @@ async function avisar({ clienteId, userId, tipo, clave, pedidoId = null, articul
     const cfg = await leerConfig(clienteId);
     if (!cfg[tipo].activo) return { omitido: true };
 
-    const pool = await getPool();
-    const id = await reservar(pool, { clienteId, userId, tipo, clave, pedidoId, articuloId });
+    const id = await reservar({ clienteId, userId, tipo, clave, pedidoId, articuloId });
     if (!id) return { duplicado: true };
 
     if (!bot.envioHabilitado()) {
-      await cerrar(pool, id, { estado: 'error', detalle: 'El portal no tiene configurado el envío de mensajes (BOT_URL / BOT_API_TOKEN).' });
+      await cerrar(clienteId, id, { estado: 'error', detalle: 'El portal no tiene configurado el envío de mensajes (BOT_URL / BOT_API_TOKEN).' });
       return { error: true };
     }
 
     const r = await bot.enviarMensaje({ clienteId, userId, texto, enviadoPor: ENVIADO_POR });
     if (r.ok) {
-      await cerrar(pool, id, { estado: 'enviado', via: 'texto' });
+      await cerrar(clienteId, id, { estado: 'enviado', via: 'texto' });
       return { enviado: true };
     }
     if (r.error !== 'fuera_de_ventana') {
-      await cerrar(pool, id, { estado: 'error', detalle: r.mensaje });
+      await cerrar(clienteId, id, { estado: 'error', detalle: r.mensaje });
       return { error: true };
     }
 
     // Pasaron más de 24 h desde que la persona escribió: solo con plantilla.
     const plantilla = cfg[tipo].plantilla;
     if (!plantilla) {
-      await cerrar(pool, id, { estado: 'fuera_de_ventana', detalle: 'Pasaron más de 24 hs y no hay plantilla cargada.' });
+      await cerrar(clienteId, id, { estado: 'fuera_de_ventana', detalle: 'Pasaron más de 24 hs y no hay plantilla cargada.' });
       return { fueraDeVentana: true };
     }
     const p = await bot.enviarPlantilla({
       clienteId, userId, plantilla, idioma: cfg.idioma, parametros: TIPOS[tipo].parametros(datos), texto, enviadoPor: ENVIADO_POR,
     });
     if (p.ok) {
-      await cerrar(pool, id, { estado: 'enviado', via: 'plantilla' });
+      await cerrar(clienteId, id, { estado: 'enviado', via: 'plantilla' });
       return { enviado: true };
     }
-    await cerrar(pool, id, { estado: 'error', via: 'plantilla', detalle: p.detalle || p.mensaje });
+    await cerrar(clienteId, id, { estado: 'error', via: 'plantilla', detalle: p.detalle || p.mensaje });
     return { error: true };
   } catch (err) {
     console.error(`[avisos] No se pudo mandar el aviso ${clave} (cliente ${clienteId}):`, err.message);
@@ -158,18 +138,10 @@ async function avisar({ clienteId, userId, tipo, clave, pedidoId = null, articul
 }
 
 async function listarDePedido(clienteId, pedidoId) {
-  const pool = await getPool();
-  const r = await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .input('pedidoId', sql.Int, pedidoId)
-    .query(`
-      SELECT a.id, a.tipo, a.estado, a.via, a.detalle,
-        FORMAT(a.fechaAlta AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy, HH:mm') AS fecha
-      FROM AvisosWhatsApp a JOIN Clientes c ON c.id = a.clienteId
-      WHERE a.clienteId = @clienteId AND a.pedidoId = @pedidoId
-      ORDER BY a.id
-    `);
+  const r = await ejecutar('dbo.usp_Portal_AvisosDePedido', {
+    clienteId: [sql.Int, clienteId],
+    pedidoId: [sql.Int, pedidoId],
+  });
   return r.recordset.map(a => ({ ...a, nombre: TIPOS[a.tipo]?.nombre || a.tipo }));
 }
 

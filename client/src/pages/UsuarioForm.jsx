@@ -52,7 +52,8 @@ export default function UsuarioForm() {
           </label>
           <label>
             Contraseña {editando && <span className="field-hint">(dejar en blanco para no cambiarla)</span>}
-            <input type="password" name="password" required={!editando} autoComplete="new-password" />
+            <input type="password" name="password" required={!editando} minLength={10} maxLength={200} autoComplete="new-password" />
+            <span className="field-hint">Mínimo 10 caracteres.</span>
           </label>
           <label>
             Rol

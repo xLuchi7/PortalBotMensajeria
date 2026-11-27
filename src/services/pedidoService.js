@@ -1,210 +1,68 @@
-const { getPool, sql } = require('./db');
+const { ejecutar, sql } = require('./db');
 
 const PAGE_SIZE = 20;
-const ESTADOS_FINALES = ['entregado', 'cancelado', 'solucionado'];
-
-class EstadoFinalError extends Error {
-  constructor() {
-    super('El pedido ya está en un estado final y no se puede modificar.');
-    this.name = 'EstadoFinalError';
-  }
-}
+// Los que se eligen a mano desde el portal ("reclamado" lo pone el bot).
+const ESTADOS_ELEGIBLES = ['pendiente', 'confirmado', 'entregado', 'cancelado', 'solucionado'];
 
 async function listarPedidos(clienteId, page = 1) {
-  const pool = await getPool();
-  const offset = (page - 1) * PAGE_SIZE;
-
-  const [countResult, sumResult, rowsResult] = await Promise.all([
-    pool
-      .request()
-      .input('clienteId', sql.Int, clienteId)
-      .query('SELECT COUNT(*) AS total FROM Pedidos WHERE clienteId = @clienteId'),
-    pool
-      .request()
-      .input('clienteId', sql.Int, clienteId)
-      .query(`
-        SELECT
-          ISNULL(SUM(total), 0) AS totalMonto,
-          SUM(CASE WHEN estado = 'pendiente' THEN 1 ELSE 0 END) AS pendientes,
-          SUM(CASE WHEN estado = 'reclamado' THEN 1 ELSE 0 END) AS reclamados
-        FROM Pedidos WHERE clienteId = @clienteId
-      `),
-    pool
-      .request()
-      .input('clienteId', sql.Int, clienteId)
-      .input('offset', sql.Int, offset)
-      .input('pageSize', sql.Int, PAGE_SIZE)
-      .query(`
-        SELECT
-          p.id, p.userId, p.estado, p.total, p.notas,
-          COALESCE(ch.nombre, ch.nombrePerfil) AS contactoNombre,
-          p.shopifyOrderId, p.shopifyOrderName, p.shopifyEstado, p.shopifyError,
-          p.shopifyPago, p.shopifyEnvio, p.trackingNumero, p.trackingUrl, p.trackingEmpresa,
-          FORMAT(p.fechaAlta AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy, HH:mm:ss') AS fecha
-        FROM Pedidos p
-        JOIN Clientes c ON c.id = p.clienteId
-        LEFT JOIN Chats ch ON ch.clienteId = p.clienteId AND ch.userId = p.userId
-        WHERE p.clienteId = @clienteId
-        ORDER BY p.id DESC
-        OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
-      `),
-  ]);
-
-  const total = countResult.recordset[0].total;
+  const r = await ejecutar('dbo.usp_Portal_PedidosListar', {
+    clienteId: [sql.Int, clienteId],
+    page: [sql.Int, page],
+    pageSize: [sql.Int, PAGE_SIZE],
+  });
+  const resumen = r.recordsets[0][0];
+  const total = resumen.total;
 
   return {
-    rows: rowsResult.recordset,
+    rows: r.recordsets[1],
     total,
     page,
     pageSize: PAGE_SIZE,
     totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
-    totalMonto: sumResult.recordset[0].totalMonto,
-    pendientes: sumResult.recordset[0].pendientes || 0,
-    reclamados: sumResult.recordset[0].reclamados || 0,
+    totalMonto: resumen.totalMonto,
+    pendientes: resumen.pendientes || 0,
+    reclamados: resumen.reclamados || 0,
   };
 }
 
 async function obtenerDetalle(pedidoId, clienteId) {
-  const pool = await getPool();
-  const result = await pool
-    .request()
-    .input('pedidoId', sql.Int, pedidoId)
-    .input('clienteId', sql.Int, clienteId)
-    .query(`
-      SELECT d.id, d.articuloId, a.nombre, d.cantidad, d.precioUnitario, d.subtotal
-      FROM DetallePedidos d
-      JOIN Articulos a ON a.id = d.articuloId
-      JOIN Pedidos p ON p.id = d.pedidoId
-      WHERE d.pedidoId = @pedidoId AND p.clienteId = @clienteId
-    `);
-
-  return result.recordset;
+  const r = await ejecutar('dbo.usp_Portal_PedidoDetalle', {
+    pedidoId: [sql.Int, pedidoId],
+    clienteId: [sql.Int, clienteId],
+  });
+  return r.recordset;
 }
 
 // entregado/cancelado/solucionado son estados finales: una vez ahi, no se puede
 // volver a tocar el pedido. Al marcar "entregado" se descuenta el Stock recien ahi
 // (no al crear el pedido), porque es cuando realmente salio la mercaderia.
-// "reclamado" lo pone el bot directamente en la base (ver Bot_Mensajeria), no se
-// elige desde este flujo -- solo su transicion a "solucionado" pasa por aca.
+// "reclamado" lo pone el bot directamente en la base (ver Bot_Mensajeria) y su
+// único paso siguiente es "solucionado", que devuelve el stock solo si se había
+// descontado (Pedidos.stockDescontado) y resuelve los reclamos del pedido.
 // omitirStock: el Cliente tiene Shopify conectado, que es quien maneja el
 // inventario (descuenta al crear la orden y nos avisa por webhook) -- tocar el
 // Stock local ademas lo descontaria dos veces.
+// Todo pasa en usp_Portal_PedidoEstadoSet con el pedido bloqueado: dos clics (o dos
+// pestañas) a la vez ya no descuentan el stock dos veces.
+// Devuelve 'ok' | 'no_existe' | 'final' | 'solo_solucionado' | 'invalido'.
 async function actualizarEstado(pedidoId, clienteId, nuevoEstado, { omitirStock = false } = {}) {
-  const pool = await getPool();
-
-  const actual = await pool
-    .request()
-    .input('pedidoId', sql.Int, pedidoId)
-    .input('clienteId', sql.Int, clienteId)
-    .query('SELECT estado FROM Pedidos WHERE id = @pedidoId AND clienteId = @clienteId');
-
-  const pedido = actual.recordset[0];
-  if (!pedido) throw new Error('Pedido no encontrado.');
-
-  // Reclamado lo pone el bot (no es un estado que se elija a mano) y no es "final"
-  // en el sentido normal, pero el único paso siguiente válido es Solucionado — no
-  // tiene sentido confirmar o cancelar un pedido que ya se entregó y está en medio
-  // de un reclamo.
-  if (pedido.estado === 'reclamado') {
-    if (nuevoEstado !== 'solucionado') throw new Error('Un pedido reclamado solo puede pasar a Solucionado.');
-    return marcarComoSolucionado(pool, pedidoId, clienteId, { omitirStock });
-  }
-
-  if (ESTADOS_FINALES.includes(pedido.estado)) throw new EstadoFinalError();
-
-  if (nuevoEstado !== 'entregado') {
-    await pool
-      .request()
-      .input('pedidoId', sql.Int, pedidoId)
-      .input('clienteId', sql.Int, clienteId)
-      .input('estado', sql.NVarChar, nuevoEstado)
-      .query('UPDATE Pedidos SET estado = @estado WHERE id = @pedidoId AND clienteId = @clienteId');
-    return;
-  }
-
-  const transaction = new sql.Transaction(pool);
-  await transaction.begin();
-  try {
-    const items = await new sql.Request(transaction)
-      .input('pedidoId', sql.Int, pedidoId)
-      .query(`
-        SELECT d.articuloId, d.cantidad, a.usaStock
-        FROM DetallePedidos d
-        JOIN Articulos a ON a.id = d.articuloId
-        WHERE d.pedidoId = @pedidoId
-      `);
-
-    // Los artículos sin control de stock (usaStock = 0) no tienen un número
-    // real que descontar — se tratan como siempre disponibles.
-    for (const item of omitirStock ? [] : items.recordset.filter(i => i.usaStock)) {
-      await new sql.Request(transaction)
-        .input('articuloId', sql.Int, item.articuloId)
-        .input('cantidad', sql.Int, item.cantidad)
-        .query('UPDATE Stock SET cantidad = cantidad - @cantidad, actualizado = SYSUTCDATETIME() WHERE articuloId = @articuloId');
-    }
-
-    await new sql.Request(transaction)
-      .input('pedidoId', sql.Int, pedidoId)
-      .input('clienteId', sql.Int, clienteId)
-      .query("UPDATE Pedidos SET estado = 'entregado' WHERE id = @pedidoId AND clienteId = @clienteId");
-
-    await transaction.commit();
-  } catch (err) {
-    await transaction.rollback();
-    throw err;
-  }
-}
-
-// Devuelve el Stock que se había descontado al entregar (mismas líneas, mismos
-// usaStock) y resuelve los Escalamientos ligados a este pedido — el reclamo del
-// cliente y el estado del pedido son, en la práctica, la misma cosa resuelta.
-async function marcarComoSolucionado(pool, pedidoId, clienteId, { omitirStock = false } = {}) {
-  const transaction = new sql.Transaction(pool);
-  await transaction.begin();
-  try {
-    const items = await new sql.Request(transaction)
-      .input('pedidoId', sql.Int, pedidoId)
-      .query(`
-        SELECT d.articuloId, d.cantidad, a.usaStock
-        FROM DetallePedidos d
-        JOIN Articulos a ON a.id = d.articuloId
-        WHERE d.pedidoId = @pedidoId
-      `);
-
-    for (const item of omitirStock ? [] : items.recordset.filter(i => i.usaStock)) {
-      await new sql.Request(transaction)
-        .input('articuloId', sql.Int, item.articuloId)
-        .input('cantidad', sql.Int, item.cantidad)
-        .query('UPDATE Stock SET cantidad = cantidad + @cantidad, actualizado = SYSUTCDATETIME() WHERE articuloId = @articuloId');
-    }
-
-    await new sql.Request(transaction)
-      .input('pedidoId', sql.Int, pedidoId)
-      .input('clienteId', sql.Int, clienteId)
-      .query("UPDATE Pedidos SET estado = 'solucionado' WHERE id = @pedidoId AND clienteId = @clienteId");
-
-    await new sql.Request(transaction)
-      .input('pedidoId', sql.Int, pedidoId)
-      .input('clienteId', sql.Int, clienteId)
-      .query("UPDATE Escalamientos SET estado = 'resuelto' WHERE pedidoId = @pedidoId AND clienteId = @clienteId AND estado <> 'resuelto'");
-
-    await transaction.commit();
-  } catch (err) {
-    await transaction.rollback();
-    throw err;
-  }
+  const result = await ejecutar('dbo.usp_Portal_PedidoEstadoSet', {
+    pedidoId: [sql.Int, pedidoId],
+    clienteId: [sql.Int, clienteId],
+    estado: [sql.NVarChar(20), nuevoEstado],
+    omitirStock: [sql.Bit, omitirStock],
+  });
+  return result.recordset[0]?.resultado ?? 'no_existe';
 }
 
 // Las notas son metadata libre del staff, no un paso del flujo de estados —
 // se pueden editar en cualquier momento, incluso con el pedido en un estado final.
 async function actualizarNotas(pedidoId, clienteId, notas) {
-  const pool = await getPool();
-  await pool
-    .request()
-    .input('pedidoId', sql.Int, pedidoId)
-    .input('clienteId', sql.Int, clienteId)
-    .input('notas', sql.NVarChar(500), notas || null)
-    .query('UPDATE Pedidos SET notas = @notas WHERE id = @pedidoId AND clienteId = @clienteId');
+  await ejecutar('dbo.usp_Portal_PedidoNotasSet', {
+    pedidoId: [sql.Int, pedidoId],
+    clienteId: [sql.Int, clienteId],
+    notas: [sql.NVarChar(500), notas || null],
+  });
 }
 
-module.exports = { listarPedidos, obtenerDetalle, actualizarEstado, actualizarNotas, EstadoFinalError };
+module.exports = { listarPedidos, obtenerDetalle, actualizarEstado, actualizarNotas, ESTADOS_ELEGIBLES };

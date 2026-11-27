@@ -37,6 +37,8 @@ addMsg(1, '5491132101982', 'assistant', '¡Hola! Qué bueno. ¿Qué producto est
 addMsg(1, '5491132101982', 'user', 'Hola test, todo bien?', null, 10);
 addMsg(1, '5491132101982', 'assistant', 'Todo bien, gracias! Decime qué producto buscás.', null, 9);
 addMsg(1, '5491128773915', 'user', 'Hola', null, 60);
+addMsg(1, '5491128773915', 'user', '¿Hacen envíos a Córdoba?', null, 59);
+addMsg(1, '5491128773915', 'assistant', 'Sí, enviamos por Andreani, tarda de 3 a 5 días hábiles.', 'admin@test.com', 58);
 addMsg(1, '59894422029', 'user', 'Gracias', null, 60 * 26);
 addMsg(1, '59894422029', 'assistant', '¡De nada! Que tengas buen día.', null, 60 * 26);
 addMsg(1, '59898970017', 'user', 'Me llegó roto', null, 60 * 25);
@@ -76,19 +78,69 @@ const contactoNombre = (c, u) => { const m = chatsMeta.get(`${c}|${u}`); return 
 class EstadoFinalError extends Error {}
 
 // ── Servicios falsos ─────────────────────────────────────────────────────────
-stub('src/services/db.js', { sql: {}, getPool: async () => ({}) });
+// Lo que no tiene stub propio y consulta la base recibe un resultado vacío (ej.
+// avisoService.leerConfig, listarDePedido), en vez de romper con un 500.
+const vacio = () => ({ recordset: [], recordsets: [[]], rowsAffected: [0] });
+const requestFalso = () => { const r = { input: () => r, query: async () => vacio(), batch: async () => vacio(), execute: async () => vacio() }; return r; };
+stub('src/services/db.js', { sql: require(path.resolve(root, 'node_modules/mssql')), getPool: async () => ({ request: requestFalso }), ejecutar: async () => vacio() });
+// Sesiones en memoria (el real las guarda en la tabla Sesiones).
+stub('src/services/sesionStore.js', require(path.resolve(root, 'node_modules/express-session')).MemoryStore);
+
+let aprId = 0;
+const aprendizajes = []; // { id, clienteId, pregunta, respuesta, activo, origenUserId, fecha, usuario }
+stub('src/services/aprendizajeService.js', {
+  TOPE_ACTIVOS: 3, MAX_PREGUNTA: 300, MAX_RESPUESTA: 1000, // tope bajo para probarlo
+  async listar(clienteId) { return aprendizajes.filter(a => a.clienteId === clienteId).sort((a, b) => b.activo - a.activo || b.id - a.id); },
+  async guardar(clienteId, { id, pregunta, respuesta, origenUserId }, usuario) {
+    if (!id) {
+      if (aprendizajes.filter(a => a.clienteId === clienteId && a.activo).length >= 3) return 'tope';
+      aprendizajes.push({ id: ++aprId, clienteId, pregunta, respuesta, activo: true, origenUserId, fecha: fechaTxt(new Date()).slice(0, 17), usuario });
+      return 'ok';
+    }
+    const a = aprendizajes.find(x => x.id === id && x.clienteId === clienteId);
+    if (!a) return 'no_existe';
+    Object.assign(a, { pregunta, respuesta, usuario });
+    return 'ok';
+  },
+  async setActivo(clienteId, id, activo, usuario) {
+    const a = aprendizajes.find(x => x.id === id && x.clienteId === clienteId);
+    if (!a) return 'no_existe';
+    if (activo && aprendizajes.filter(x => x.clienteId === clienteId && x.activo && x.id !== id).length >= 3) return 'tope';
+    Object.assign(a, { activo, usuario });
+    return 'ok';
+  },
+  async borrar(clienteId, id) {
+    const i = aprendizajes.findIndex(x => x.id === id && x.clienteId === clienteId);
+    if (i < 0) return false;
+    aprendizajes.splice(i, 1);
+    return true;
+  },
+});
 
 stub('src/services/usuarioService.js', {
+  PASSWORD_MIN: 10,
   async autenticar(email, password) {
     const u = usuarios.find(x => x.email === email && x.password === password && x.activo);
     if (!u) return null;
     const c = clientes.find(x => x.id === u.clienteId);
-    return { id: u.id, clienteId: u.clienteId, email: u.email, rol: u.rol, razonSocial: c ? c.razonSocial : null };
+    return { id: u.id, clienteId: u.clienteId, email: u.email, rol: u.rol, razonSocial: c ? c.razonSocial : null, passwordCambiadaEn: u.passwordCambiadaEn ?? null };
+  },
+  // Lo que mira requireAuth: usuario borrado/inactivo, Cliente inactivo, contraseña cambiada.
+  async estadoSesion(id) {
+    const u = usuarios.find(x => x.id === id);
+    if (!u) return null;
+    const c = clientes.find(x => x.id === u.clienteId);
+    return { id: u.id, email: u.email, rol: u.rol, clienteId: u.clienteId, razonSocial: c ? c.razonSocial : null,
+      activo: Boolean(u.activo) && (!c || c.activo), passwordCambiadaEn: u.passwordCambiadaEn ?? null };
   },
   async listarUsuarios(page) { return pag(usuarios.map(u => ({ ...u, password: undefined, razonSocial: clientes.find(c => c.id === u.clienteId)?.razonSocial })), page); },
   async obtenerUsuario(id) { const u = usuarios.find(x => x.id === id); return u ? { id: u.id, email: u.email, rol: u.rol, clienteId: u.clienteId, activo: u.activo } : null; },
   async crearUsuario(d) { if (usuarios.some(u => u.email === d.email)) { const e = new Error('dup'); e.number = 2627; throw e; } usuarios.push({ id: usuarios.length + 1, activo: true, ...d }); },
-  async actualizarUsuario(id, d) { const u = usuarios.find(x => x.id === id); Object.assign(u, { email: d.email, rol: d.rol, clienteId: d.clienteId }, d.password ? { password: d.password } : {}); },
+  async actualizarUsuario(id, d) {
+    const u = usuarios.find(x => x.id === id);
+    Object.assign(u, { email: d.email, rol: d.rol, clienteId: d.clienteId }, d.password ? { password: d.password, passwordCambiadaEn: new Date().toISOString() } : {});
+    return u.passwordCambiadaEn ?? null;
+  },
   async borrarUsuario(id) { const i = usuarios.findIndex(x => x.id === id); if (i >= 0) usuarios.splice(i, 1); },
 });
 
@@ -104,6 +156,10 @@ stub('src/services/clienteService.js', {
   async actualizarContexto(id, t) { clientes.find(x => x.id === id).contexto = t; },
   async desactivarCliente(id) { clientes.find(x => x.id === Number(id)).activo = false; },
   async activarCliente(id) { clientes.find(x => x.id === Number(id)).activo = true; },
+  async obtenerTelefonoAlertas(id) { return clientes.find(x => x.id === Number(id))?.telefonoAlertas ?? null; },
+  async setTelefonoAlertas(id, t) { clientes.find(x => x.id === Number(id)).telefonoAlertas = t; },
+  async zonaHorariaValida(z) { return typeof z === 'string' && /Standard Time$/.test(z); },
+  mismoTelefono: (a, b) => String(a || '').replace(/\D/g, '') === String(b || '').replace(/\D/g, ''),
 });
 
 const ESTADOS = {
@@ -165,10 +221,34 @@ stub('src/services/chatService.js', {
     if (!mensajes.some(m => m.clienteId === clienteId && m.userId === userId)) return false;
     const k = `${clienteId}|${userId}`; chatsMeta.set(k, { botActivo: true, ...(chatsMeta.get(k) || {}), nombre: nombre || null }); return true;
   },
+  async atenderRevision() { return true; },
   async huellaBandeja(clienteId) {
     const ms = mensajes.filter(m => m.clienteId === clienteId);
     const pausados = [...chatsMeta.entries()].filter(([k, v]) => k.startsWith(`${clienteId}|`) && v.botActivo === false).length;
     return `${ms.length ? Math.max(...ms.map(m => m.id)) : 0}-${pausados}`;
+  },
+});
+
+// Contadores del menú (el resumen de Inicio sigue sin stub: esa página no se prueba acá).
+stub('src/services/inicioService.js', {
+  PERIODOS: [7, 30],
+  async contadores(clienteId) {
+    return {
+      chats: [...chatsMeta.entries()].filter(([k, v]) => k.startsWith(`${clienteId}|`) && v.botActivo === false).length,
+      escalamientos: escalamientos.filter(e => e.clienteId === clienteId && e.estado !== 'resuelto').length,
+      pedidos: pedidos.filter(p => p.clienteId === clienteId && p.estado === 'pendiente').length,
+      revision: 0,
+      revisionChats: [],
+    };
+  },
+  async resumen() { throw new Error('inicioService.resumen sin stub en fake-server'); },
+});
+
+// Alta de Clientes: sin esto se llamaba a la API real de Meta con el token del .env.
+stub('src/services/metaService.js', {
+  async suscribirClientePorTelefono(telefono) {
+    if (String(telefono).replace(/\D/g, '').startsWith('000')) throw new Error('No encontramos ninguna Cuenta de WhatsApp Business con ese teléfono (fake).');
+    return 'waba-fake';
   },
 });
 
@@ -178,26 +258,35 @@ stub('src/services/botService.js', {
 });
 
 stub('src/services/escalamientoService.js', {
-  EstadoFinalError,
+  ESTADOS: ['pendiente', 'en_proceso', 'resuelto'],
   async listarEscalamientos(clienteId, page) {
     const rows = escalamientos.filter(e => e.clienteId === clienteId).map(e => ({ ...e, fecha: fechaTxt(new Date()), contactoNombre: contactoNombre(clienteId, e.userId) }));
     return { ...pag(rows, page), pendientes: rows.filter(e => e.estado !== 'resuelto').length };
   },
-  async actualizarEstado(id, clienteId, estado) { const e = escalamientos.find(x => x.id === Number(id)); if (e.estado === 'resuelto') throw new EstadoFinalError('final'); e.estado = estado; },
+  async actualizarEstado(id, clienteId, estado) {
+    const e = escalamientos.find(x => x.id === Number(id) && x.clienteId === clienteId);
+    if (!e) return 'no_existe';
+    if (e.estado === 'resuelto') return 'final';
+    e.estado = estado;
+    return 'ok';
+  },
 });
 
 stub('src/services/pedidoService.js', {
-  EstadoFinalError,
+  ESTADOS_ELEGIBLES: ['pendiente', 'confirmado', 'entregado', 'cancelado', 'solucionado'],
   async listarPedidos(clienteId, page) {
     const rows = pedidos.filter(p => p.clienteId === clienteId).map(p => ({ ...p, fecha: fechaTxt(new Date()), contactoNombre: contactoNombre(clienteId, p.userId) }));
     return { ...pag(rows, page), totalMonto: rows.reduce((a, p) => a + p.total, 0), pendientes: rows.filter(p => p.estado === 'pendiente').length, reclamados: rows.filter(p => p.estado === 'reclamado').length };
   },
   async obtenerDetalle(id) { return [{ nombre: 'Remera Básica - M', cantidad: 1, precioUnitario: 1250, subtotal: 1250 }, { nombre: 'Gorra', cantidad: 1, precioUnitario: 1250, subtotal: 1250 }].slice(0, Number(id) % 2 ? 2 : 1); },
   async actualizarEstado(id, clienteId, estado) {
-    const p = pedidos.find(x => x.id === Number(id));
-    if (['entregado', 'cancelado', 'solucionado'].includes(p.estado)) throw new EstadoFinalError('final');
-    if (p.estado === 'reclamado' && estado !== 'solucionado') throw new Error('Un pedido reclamado solo puede pasar a Solucionado.');
+    const p = pedidos.find(x => x.id === Number(id) && x.clienteId === clienteId);
+    if (!p) return 'no_existe';
+    if (p.estado === 'reclamado') { if (estado !== 'solucionado') return 'solo_solucionado'; p.estado = estado; return 'ok'; }
+    if (['entregado', 'cancelado', 'solucionado'].includes(p.estado)) return 'final';
+    if (estado === 'solucionado') return 'invalido';
     p.estado = estado;
+    return 'ok';
   },
   async actualizarNotas(id, clienteId, notas) { pedidos.find(x => x.id === Number(id)).notas = notas || null; },
 });
@@ -236,6 +325,7 @@ stub('src/services/consultaService.js', {
 
 const jobs = new Map();
 stub('src/services/importService.js', {
+  enCurso: () => null,
   async leerFilas(buf) { if (buf.length < 10) throw new Error('El archivo no es un Excel válido.'); return [1, 2, 3, 4, 5]; },
   crearJob(clienteId, filas) {
     const id = crypto.randomUUID(); const job = { clienteId, total: filas.length, procesado: 0, exitosos: 0, errores: 0, terminado: false }; jobs.set(id, job);
@@ -293,7 +383,9 @@ stub('src/services/shopifyWebhookService.js', { handler: (req, res) => res.sendS
 http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
   if (u.pathname === '/inject') {
-    addMsg(Number(u.searchParams.get('cliente') || 1), u.searchParams.get('user'), 'user', u.searchParams.get('texto'));
+    const cliente = Number(u.searchParams.get('cliente') || 1);
+    addMsg(cliente, u.searchParams.get('user'), 'user', u.searchParams.get('texto'));
+    require(path.resolve(root, 'src/services/eventosService')).emitir(cliente, 'mensaje', { userId: u.searchParams.get('user') });
     return res.end('ok');
   }
   res.statusCode = 404; res.end();

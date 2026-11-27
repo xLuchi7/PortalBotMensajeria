@@ -1,48 +1,22 @@
-const { getPool, sql } = require('./db');
+const { ejecutar, sql } = require('./db');
 
 const PAGE_SIZE = 20;
 
 async function listarConsultas(clienteId, page = 1) {
-  const pool = await getPool();
-  const offset = (page - 1) * PAGE_SIZE;
-
-  const [countResult, sinStockResult, rowsResult] = await Promise.all([
-    pool
-      .request()
-      .input('clienteId', sql.Int, clienteId)
-      .query('SELECT COUNT(*) AS total FROM VConsultas WHERE clienteId = @clienteId'),
-    pool
-      .request()
-      .input('clienteId', sql.Int, clienteId)
-      .query('SELECT COUNT(*) AS sinStock FROM VConsultas WHERE clienteId = @clienteId AND sinStock = 1'),
-    pool
-      .request()
-      .input('clienteId', sql.Int, clienteId)
-      .input('offset', sql.Int, offset)
-      .input('pageSize', sql.Int, PAGE_SIZE)
-      .query(`
-        SELECT
-          v.tipo, v.userId, v.detalle, v.articuloNombre, v.sinStock, v.pedidoId, v.pedidoEstado,
-          COALESCE(ch.nombre, ch.nombrePerfil) AS contactoNombre,
-          FORMAT(v.fechaAlta AT TIME ZONE 'UTC' AT TIME ZONE c.zonaHoraria, 'dd/MM/yyyy, HH:mm:ss') AS fecha
-        FROM VConsultas v
-        JOIN Clientes c ON c.id = v.clienteId
-        LEFT JOIN Chats ch ON ch.clienteId = v.clienteId AND ch.userId = v.userId
-        WHERE v.clienteId = @clienteId
-        ORDER BY v.fechaAlta DESC
-        OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
-      `),
-  ]);
-
-  const total = countResult.recordset[0].total;
+  const r = await ejecutar('dbo.usp_Portal_ConsultasListar', {
+    clienteId: [sql.Int, clienteId],
+    page: [sql.Int, page],
+    pageSize: [sql.Int, PAGE_SIZE],
+  });
+  const { total, sinStock } = r.recordsets[0][0];
 
   return {
-    rows: rowsResult.recordset,
+    rows: r.recordsets[1],
     total,
     page,
     pageSize: PAGE_SIZE,
     totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
-    sinStock: sinStockResult.recordset[0].sinStock,
+    sinStock,
   };
 }
 

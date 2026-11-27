@@ -25,6 +25,15 @@ const shopifyOrders = require('../services/shopifyOrderService');
 const avisos = require('../services/avisoService');
 const logs = require('../services/logService');
 const eventos = require('../services/eventosService');
+const aprendizajes = require('../services/aprendizajeService');
+const { crearLimite } = require('../services/limiteService');
+const { memo } = require('../services/cacheCorto');
+
+// Huella de la bandeja: la piden todas las pantallas de chats con cada aviso.
+const huellaDe = clienteId => memo(clienteId, 'huella', () => chats.huellaBandeja(clienteId));
+const { invalidar: invalidarSesiones } = require('../middleware/requireAuth');
+
+const ES_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const router = express.Router();
 
@@ -32,25 +41,37 @@ const router = express.Router();
 // - Todo lo que se loguee durante un request (incluidos los console.error de
 //   cualquier servicio) queda con el Cliente, el chat y el usuario del request.
 // - Cada request queda registrado con método, ruta, status, duración, IP y (en
-//   POST/PUT/DELETE) el body, sin contraseñas ni tokens. Se saltean solo los
-//   pedidos automáticos de actualización (polling) para no llenar la tabla.
+//   POST/PUT/DELETE) el body, sin contraseñas ni tokens. Los GET solo si fallan
+//   o tardan más de GET_LENTO_MS; los de SIN_LOG (automáticos), nunca.
+const GET_LENTO_MS = 1000;
 const SIN_LOG = /^\/(sesion|logs|clientes\/\d+\/(contadores|eventos|chats\/novedades|importar\/[^/]+|shopify\/sync\/[^/]+))$/;
 const CAMPOS_SECRETOS = /pass|contrase|token|secret|clave|apikey|api_key/i;
 
+// Redacta en cualquier nivel (ej. { app: { clientSecret } }), no solo arriba.
+function limpiarParaLog(v, nivel = 0) {
+  if (typeof v === 'string') return v.length > 2000 ? `${v.slice(0, 2000)}…` : v;
+  if (!v || typeof v !== 'object') return v;
+  if (nivel > 4) return '…';
+  if (Array.isArray(v)) return v.slice(0, 50).map(x => limpiarParaLog(x, nivel + 1));
+  const limpio = {};
+  for (const [k, x] of Object.entries(v)) limpio[k] = CAMPOS_SECRETOS.test(k) ? '***' : limpiarParaLog(x, nivel + 1);
+  return limpio;
+}
+
 function bodyParaLog(body) {
   if (!body || typeof body !== 'object' || !Object.keys(body).length) return undefined;
-  const limpio = {};
-  for (const [k, v] of Object.entries(body)) {
-    limpio[k] = CAMPOS_SECRETOS.test(k) ? '***' : typeof v === 'string' && v.length > 2000 ? `${v.slice(0, 2000)}…` : v;
-  }
-  return limpio;
+  return limpiarParaLog(body);
 }
 
 router.use((req, res, next) => {
   const ruta = req.path;
   logs.conContexto({
     get clienteId() { return req.clienteId ?? (parseInt(/^\/clientes\/(\d+)/.exec(ruta)?.[1], 10) || null); },
-    get userId() { const m = /\/chats\/([^/]+)/.exec(ruta); return m && m[1] !== 'novedades' ? decodeURIComponent(m[1]) : null; },
+    get userId() {
+      const m = /\/chats\/([^/]+)/.exec(ruta);
+      if (!m || m[1] === 'novedades') return null;
+      try { return decodeURIComponent(m[1]); } catch { return null; }
+    },
     get usuario() { return req.session?.usuario?.email ?? null; },
   }, () => {
     if (req.method !== 'GET' || !SIN_LOG.test(ruta)) {
@@ -58,6 +79,9 @@ router.use((req, res, next) => {
       res.on('finish', () => {
         // Los avisos del bot (uno por mensaje) solo se loguean si fallan.
         if (ruta === '/interno/eventos' && res.statusCode < 400) return;
+        // Con el tiempo real, cada mensaje hace que cada pestaña vuelva a pedir sus
+        // datos: los GET que salieron bien y rápido no se guardan (solo errores o lentos).
+        if (req.method === 'GET' && res.statusCode < 400 && Date.now() - inicio < GET_LENTO_MS) return;
         const nivel = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
         logs.registrar(nivel, `api_${req.method.toLowerCase()}`, {
           duracionMs: Date.now() - inicio,
@@ -75,7 +99,38 @@ router.use((req, res, next) => {
     next();
   });
 });
-const uploadExcel = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+// CSRF: todo lo que cambia algo (no GET) tiene que venir del propio frontend.
+// - X-Requested-With: lo agrega api() del cliente; otro sitio no puede mandarlo
+//   sin permiso CORS (que no damos).
+// - Sec-Fetch-Site (lo mandan los navegadores): si dice que viene de otro sitio, no.
+// /interno/eventos queda afuera: lo llama el bot con su token, no un navegador.
+router.use((req, res, next) => {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS' || req.path === '/interno/eventos') return next();
+  const sitio = req.get('sec-fetch-site');
+  if (!req.get('x-requested-with') || (sitio && sitio !== 'same-origin' && sitio !== 'none')) {
+    logs.warn('csrf_rechazado', { detalle: { ruta: req.originalUrl, ip: req.ip, origen: req.get('origin') ?? null, sitio: sitio ?? null } });
+    return res.status(403).json({ ok: false, tipo: 'warning', mensaje: 'Pedido Rechazado: Recargá La Página' });
+  }
+  next();
+});
+
+// Todos los :id de la API son enteros: cualquier otra cosa es 404 (antes llegaba
+// a SQL como texto y terminaba en un 500).
+router.param('id', (req, res, next, id) => {
+  if (!/^\d{1,10}$/.test(id) || Number(id) < 1 || Number(id) > 2147483647) return res.status(404).json({ ok: false, tipo: 'warning', mensaje: 'No Encontrado' });
+  next();
+});
+
+const uploadExcel = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 5 },
+  fileFilter: (req, file, cb) => {
+    if (/\.xlsx$/i.test(file.originalname)) return cb(null, true);
+    const err = new Error('Tipo de archivo inválido');
+    err.code = 'TIPO_INVALIDO';
+    cb(err);
+  },
+});
 
 // Envuelve un handler async: cualquier error inesperado termina en el handler
 // de errores de abajo (500 + mensaje genérico).
@@ -110,25 +165,44 @@ router.get('/sesion', (req, res) => {
   });
 });
 
+// Fuerza bruta: se cuentan los intentos fallidos por IP y por email (15 min).
+const fallosPorIp = crearLimite({ max: 10, ventanaMs: 15 * 60 * 1000 });
+const fallosPorEmail = crearLimite({ max: 5, ventanaMs: 15 * 60 * 1000 });
+
 router.post('/login', h(async (req, res) => {
-  const email = texto(req.body.email, 200).trim();
-  const password = texto(req.body.password, 200);
+  const body = req.body ?? {};
+  const email = texto(body.email, 200).trim().toLowerCase();
+  const password = texto(body.password, 200);
   if (!email || !password) return falla(res, 400, 'Completá Email Y Contraseña');
+
+  const claveIp = req.ip || 'sin-ip';
+  if (fallosPorIp.bloqueado(claveIp) || fallosPorEmail.bloqueado(email)) {
+    const minutos = Math.max(fallosPorIp.minutosRestantes(claveIp), fallosPorEmail.minutosRestantes(email));
+    logs.warn('login_bloqueado', { detalle: { ip: req.ip, email: ES_EMAIL.test(email) ? email : '(no es un email)' } });
+    return falla(res, 429, `Demasiados Intentos: Probá De Nuevo En ${minutos} ${minutos === 1 ? 'Minuto' : 'Minutos'}`);
+  }
+
   try {
     const usuario = await usuarios.autenticar(email, password);
     if (!usuario) {
-      logs.warn('login_fallido', { usuario: email, detalle: { ip: req.ip } });
+      fallosPorIp.sumar(claveIp);
+      fallosPorEmail.sumar(email);
+      // A veces se tipea la contraseña en el campo del email: solo se loguea si parece un email.
+      logs.warn('login_fallido', { usuario: ES_EMAIL.test(email) ? email : '(no es un email)', detalle: { ip: req.ip } });
       return falla(res, 401, 'Email o contraseña incorrectos.');
     }
+    fallosPorEmail.limpiar(email);
     logs.info('login', { usuario: usuario.email, clienteId: usuario.clienteId ?? null, detalle: { rol: usuario.rol, ip: req.ip } });
     // Sesión nueva al loguearse (evita fijación de sesión); se conserva la
     // tienda de Shopify pendiente si vino desde el link de instalación.
     const shopifyPendiente = req.session.shopifyPendiente;
+    const { passwordCambiadaEn, ...datosUsuario } = usuario;
     req.session.regenerate(err => {
       if (err) return falla(res, 500, 'Ocurrió un error, probá de nuevo.');
-      req.session.usuario = usuario;
+      req.session.usuario = datosUsuario;
+      req.session.passwordMarca = passwordCambiadaEn; // si cambia, requireAuth corta la sesión
       if (shopifyPendiente) req.session.shopifyPendiente = shopifyPendiente;
-      res.json({ ok: true, usuario, shopifyPendiente: Boolean(shopifyPendiente) });
+      res.json({ ok: true, usuario: datosUsuario, shopifyPendiente: Boolean(shopifyPendiente) });
     });
   } catch (err) {
     console.error('[auth] Error al autenticar:', err.message);
@@ -138,7 +212,10 @@ router.post('/login', h(async (req, res) => {
 
 router.post('/logout', (req, res) => {
   if (req.session.usuario) logs.info('logout', { usuario: req.session.usuario.email });
-  req.session.destroy(() => res.json({ ok: true }));
+  req.session.destroy(() => {
+    res.clearCookie(config.sessionCookie);
+    res.json({ ok: true });
+  });
 });
 
 // ── Tiempo real (eventos) ───────────────────────────────────────────────────
@@ -207,8 +284,9 @@ function datosCliente(body) {
 }
 
 router.post('/clientes', requireAdmin, h(async (req, res) => {
-  const datos = datosCliente(req.body);
+  const datos = datosCliente(req.body ?? {});
   if (!datos.razonSocial || !datos.cuit || !datos.telefono) return falla(res, 400, 'Completá Razón Social, CUIT Y Teléfono');
+  if (!(await clientes.zonaHorariaValida(datos.zonaHoraria))) return falla(res, 400, 'Zona Horaria Inválida');
 
   // Antes de crear el Cliente, buscamos su WABA entre las compartidas con el Tech
   // Provider y la suscribimos — si esto falla no creamos el Cliente, porque sin la
@@ -239,18 +317,34 @@ router.get('/clientes/:clienteId', resolveClienteAccess, h(async (req, res) => {
 // Inicio: resumen de los últimos 7 o 30 días, lo que necesita atención y la actividad reciente.
 router.get('/clientes/:clienteId/contadores', resolveClienteAccess, h(async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json(await inicio.contadores(req.clienteId));
+  res.json(await memo(req.clienteId, 'contadores', () => inicio.contadores(req.clienteId)));
 }));
 
 router.get('/clientes/:clienteId/inicio', resolveClienteAccess, h(async (req, res) => {
-  res.json(await inicio.resumen(req.clienteId, parseInt(req.query.dias, 10) || 7));
+  const dias = parseInt(req.query.dias, 10) || 7;
+  res.json(await memo(req.clienteId, `inicio:${dias}`, () => inicio.resumen(req.clienteId, dias)));
 }));
 
 router.put('/clientes/:clienteId', requireAdmin, resolveClienteAccess, h(async (req, res) => {
-  const datos = datosCliente(req.body);
+  const datos = datosCliente(req.body ?? {});
   if (!datos.razonSocial || !datos.cuit || !datos.telefono) return falla(res, 400, 'Completá Razón Social, CUIT Y Teléfono');
+  if (!(await clientes.zonaHorariaValida(datos.zonaHoraria))) return falla(res, 400, 'Zona Horaria Inválida');
+  const actual = await clientes.obtenerCliente(req.clienteId);
+  if (!actual) return falla(res, 404, 'Cliente No Encontrado');
+
+  // Teléfono nuevo: hay que encontrar y suscribir su WABA, igual que al crear el
+  // Cliente; si no, el bot deja de recibir los mensajes de ese número.
+  let wabaId = null;
+  if (!clientes.mismoTelefono(actual.telefono, datos.telefono)) {
+    try {
+      wabaId = await meta.suscribirClientePorTelefono(datos.telefono);
+    } catch (err) {
+      return falla(res, 400, err.message);
+    }
+  }
+
   try {
-    await clientes.actualizarCliente(req.clienteId, datos);
+    await clientes.actualizarCliente(req.clienteId, { ...datos, wabaId });
   } catch (err) {
     if (esDuplicado(err)) return falla(res, 409, 'Ya existe otro Cliente con ese CUIT o teléfono.');
     throw err;
@@ -260,11 +354,15 @@ router.put('/clientes/:clienteId', requireAdmin, resolveClienteAccess, h(async (
 
 router.post('/clientes/:clienteId/desactivar', requireAdmin, resolveClienteAccess, h(async (req, res) => {
   await clientes.desactivarCliente(req.clienteId);
+  // Los usuarios de ese Cliente quedan afuera ya, no cuando venza su sesión.
+  invalidarSesiones();
+  eventos.cerrarCliente(req.clienteId);
   ok(res, 'Cliente Desactivado');
 }));
 
 router.post('/clientes/:clienteId/activar', requireAdmin, resolveClienteAccess, h(async (req, res) => {
   await clientes.activarCliente(req.clienteId);
+  invalidarSesiones();
   ok(res, 'Cliente Reactivado');
 }));
 
@@ -294,9 +392,13 @@ function datosUsuario(body) {
   };
 }
 
+const PASSWORD_CORTA = `La Contraseña Tiene Que Tener Al Menos ${usuarios.PASSWORD_MIN} Caracteres`;
+
 router.post('/usuarios', requireAdmin, h(async (req, res) => {
-  const datos = datosUsuario(req.body);
+  const datos = datosUsuario(req.body ?? {});
   if (!datos.email || !datos.password) return falla(res, 400, 'Completá Email Y Contraseña');
+  if (!ES_EMAIL.test(datos.email)) return falla(res, 400, 'Revisá El Email');
+  if (datos.password.length < usuarios.PASSWORD_MIN) return falla(res, 400, PASSWORD_CORTA);
   if (datos.rol === 'cliente' && !datos.clienteId) return falla(res, 400, 'Elegí El Cliente Del Usuario');
   try {
     await usuarios.crearUsuario(datos);
@@ -308,15 +410,25 @@ router.post('/usuarios', requireAdmin, h(async (req, res) => {
 }));
 
 router.put('/usuarios/:id', requireAdmin, h(async (req, res) => {
-  const datos = datosUsuario(req.body);
+  const id = parseInt(req.params.id, 10) || 0;
+  const datos = datosUsuario(req.body ?? {});
   if (!datos.email) return falla(res, 400, 'Completá El Email');
+  if (!ES_EMAIL.test(datos.email)) return falla(res, 400, 'Revisá El Email');
+  if (datos.password && datos.password.length < usuarios.PASSWORD_MIN) return falla(res, 400, PASSWORD_CORTA);
   if (datos.rol === 'cliente' && !datos.clienteId) return falla(res, 400, 'Elegí El Cliente Del Usuario');
+  if (id === req.session.usuario.id && datos.rol !== 'admin') return falla(res, 400, 'No Podés Quitarte El Rol De Admin');
+  let marca;
   try {
-    await usuarios.actualizarUsuario(parseInt(req.params.id, 10) || 0, datos);
+    marca = await usuarios.actualizarUsuario(id, datos);
   } catch (err) {
     if (esDuplicado(err)) return falla(res, 409, 'Ya existe un usuario con ese email.');
     throw err;
   }
+  // Las sesiones de ese usuario se revisan ya (rol/Cliente nuevos, o se cortan si
+  // cambió la contraseña). A uno mismo no se lo desloguea por cambiarse la clave.
+  invalidarSesiones(id);
+  if (id === req.session.usuario.id) req.session.passwordMarca = marca;
+  else eventos.cerrarUsuario(id);
   ok(res, 'Usuario Actualizado Correctamente');
 }));
 
@@ -324,6 +436,8 @@ router.delete('/usuarios/:id', requireAdmin, h(async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
   if (id === req.session.usuario.id) return falla(res, 400, 'No Podés Borrar Tu Propio Usuario');
   await usuarios.borrarUsuario(id);
+  invalidarSesiones(id);
+  eventos.cerrarUsuario(id);
   ok(res, 'Usuario Borrado');
 }));
 
@@ -348,6 +462,55 @@ router.put('/clientes/:clienteId/negocio/alertas', resolveClienteAccess, h(async
   }
   await clientes.setTelefonoAlertas(req.clienteId, digitos || null);
   (digitos ? ok : aviso)(res, digitos ? 'Número De Alertas Guardado' : 'Sin Número De Alertas: Nadie Recibe El Aviso Por WhatsApp', { telefonoAlertas: digitos });
+}));
+
+// ── Aprendizajes ────────────────────────────────────────────────────────────
+// Pares pregunta → respuesta que el bot suma a su system prompt.
+
+router.get('/clientes/:clienteId/aprendizajes', resolveClienteAccess, h(async (req, res) => {
+  res.json({ rows: await aprendizajes.listar(req.clienteId), tope: aprendizajes.TOPE_ACTIVOS });
+}));
+
+function datosAprendizaje(body) {
+  return {
+    pregunta: texto(body.pregunta, aprendizajes.MAX_PREGUNTA).trim(),
+    respuesta: texto(body.respuesta, aprendizajes.MAX_RESPUESTA).trim(),
+  };
+}
+
+const MENSAJE_TOPE = `Llegaste Al Tope De ${aprendizajes.TOPE_ACTIVOS} Aprendizajes Activos: Desactivá O Borrá Alguno`;
+
+router.post('/clientes/:clienteId/aprendizajes', resolveClienteAccess, h(async (req, res) => {
+  const datos = datosAprendizaje(req.body);
+  if (!datos.pregunta || !datos.respuesta) return falla(res, 400, 'Completá La Pregunta Y La Respuesta');
+  const origenUserId = texto(req.body.origenUserId, 100) || null;
+  const resultado = await aprendizajes.guardar(req.clienteId, { ...datos, origenUserId }, req.session.usuario.email);
+  if (resultado === 'tope') return falla(res, 400, MENSAJE_TOPE);
+  ok(res, 'Aprendizaje Guardado: El Bot Ya Lo Usa');
+}));
+
+router.post('/clientes/:clienteId/aprendizajes/:id', resolveClienteAccess, h(async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  const datos = datosAprendizaje(req.body);
+  if (!datos.pregunta || !datos.respuesta) return falla(res, 400, 'Completá La Pregunta Y La Respuesta');
+  const resultado = await aprendizajes.guardar(req.clienteId, { ...datos, id }, req.session.usuario.email);
+  if (resultado === 'no_existe') return falla(res, 404, 'Aprendizaje No Encontrado');
+  ok(res, 'Aprendizaje Actualizado');
+}));
+
+router.post('/clientes/:clienteId/aprendizajes/:id/activo', resolveClienteAccess, h(async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  const activo = req.body.activo === true;
+  const resultado = await aprendizajes.setActivo(req.clienteId, id, activo, req.session.usuario.email);
+  if (resultado === 'tope') return falla(res, 400, MENSAJE_TOPE);
+  if (resultado === 'no_existe') return falla(res, 404, 'Aprendizaje No Encontrado');
+  (activo ? ok : aviso)(res, activo ? 'Aprendizaje Activado' : 'Aprendizaje Desactivado: El Bot Ya No Lo Usa');
+}));
+
+router.post('/clientes/:clienteId/aprendizajes/:id/borrar', resolveClienteAccess, h(async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  if (!(await aprendizajes.borrar(req.clienteId, id))) return falla(res, 404, 'Aprendizaje No Encontrado');
+  ok(res, 'Aprendizaje Borrado');
 }));
 
 // Interruptor general del bot.
@@ -390,7 +553,7 @@ router.get('/clientes/:clienteId/articulos/:id/detalle', resolveClienteAccess, h
 // si se tocaran acá, el próximo aviso de Shopify pisaría el cambio igual.
 const bloquearSiEsDeShopify = h(async (req, res, next) => {
   const [articulo, conexion] = await Promise.all([
-    articulos.obtenerArticulo(req.params.id, req.clienteId),
+    articulos.obtenerArticulo(parseInt(req.params.id, 10) || 0, req.clienteId),
     shopify.obtenerConexionActiva(req.clienteId),
   ]);
   if (!articulo) return falla(res, 404, 'Artículo No Encontrado');
@@ -399,20 +562,33 @@ const bloquearSiEsDeShopify = h(async (req, res, next) => {
   next();
 });
 
+// Número finito >= 0 (precio) o entero >= 0 (stock). null si viene vacío; NaN si es inválido.
+function numeroDe(v, { entero = false } = {}) {
+  if (v === '' || v == null) return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n > 999999999 || (entero && !Number.isInteger(n))) return NaN;
+  return entero ? n : Math.round(n * 100) / 100;
+}
+
+// Los largos son los de las columnas de Articulos (si no, SQL corta con error).
 function datosArticulo(body) {
   return {
-    codigo: texto(body.codigo, 100).trim(),
-    nombre: texto(body.nombre, 300).trim(),
-    descripcion: texto(body.descripcion, 1000).trim(),
-    precio: body.precio,
+    codigo: texto(body.codigo, 50).trim(),
+    nombre: texto(body.nombre, 200).trim(),
+    descripcion: texto(body.descripcion, 4000).trim(),
+    precio: numeroDe(body.precio),
     usaStock: Boolean(body.usaStock),
   };
 }
 
 router.post('/clientes/:clienteId/articulos', resolveClienteAccess, h(async (req, res) => {
-  const datos = datosArticulo(req.body);
-  if (!datos.nombre || datos.precio === '' || datos.precio == null) return falla(res, 400, 'Completá Nombre Y Precio');
-  await articulos.crearArticulo(req.clienteId, { ...datos, cantidadInicial: req.body.cantidadInicial });
+  const body = req.body ?? {};
+  const datos = datosArticulo(body);
+  if (!datos.nombre || datos.precio === null) return falla(res, 400, 'Completá Nombre Y Precio');
+  if (Number.isNaN(datos.precio)) return falla(res, 400, 'Revisá El Precio');
+  const cantidadInicial = numeroDe(body.cantidadInicial, { entero: true }) ?? 0;
+  if (Number.isNaN(cantidadInicial)) return falla(res, 400, 'Revisá La Cantidad: Tiene Que Ser Un Número Entero');
+  await articulos.crearArticulo(req.clienteId, { ...datos, cantidadInicial });
   ok(res, 'Artículo Creado Correctamente');
 }));
 
@@ -421,37 +597,67 @@ router.get('/clientes/:clienteId/articulos/:id', resolveClienteAccess, bloquearS
 });
 
 router.put('/clientes/:clienteId/articulos/:id', resolveClienteAccess, bloquearSiEsDeShopify, h(async (req, res) => {
-  const datos = datosArticulo(req.body);
-  if (!datos.nombre || datos.precio === '' || datos.precio == null) return falla(res, 400, 'Completá Nombre Y Precio');
-  await articulos.actualizarArticulo(req.params.id, req.clienteId, datos);
+  const datos = datosArticulo(req.body ?? {});
+  if (!datos.nombre || datos.precio === null) return falla(res, 400, 'Completá Nombre Y Precio');
+  if (Number.isNaN(datos.precio)) return falla(res, 400, 'Revisá El Precio');
+  await articulos.actualizarArticulo(req.articulo.id, req.clienteId, datos);
   ok(res, 'Artículo Actualizado Correctamente');
 }));
 
 router.post('/clientes/:clienteId/articulos/:id/stock', resolveClienteAccess, bloquearSiEsDeShopify, h(async (req, res) => {
-  await articulos.actualizarStock(req.params.id, req.clienteId, req.body.cantidad);
+  const cantidad = numeroDe(req.body?.cantidad, { entero: true });
+  if (cantidad === null || Number.isNaN(cantidad)) return falla(res, 400, 'Revisá La Cantidad: Tiene Que Ser Un Número Entero');
+  await articulos.actualizarStock(req.articulo.id, req.clienteId, cantidad);
   ok(res, 'Stock Actualizado');
 }));
 
 router.post('/clientes/:clienteId/articulos/:id/desactivar', resolveClienteAccess, bloquearSiEsDeShopify, h(async (req, res) => {
-  await articulos.desactivarArticulo(req.params.id, req.clienteId);
+  await articulos.desactivarArticulo(req.articulo.id, req.clienteId);
   ok(res, 'Artículo Desactivado');
 }));
 
 router.post('/clientes/:clienteId/articulos/:id/activar', resolveClienteAccess, bloquearSiEsDeShopify, h(async (req, res) => {
-  await articulos.activarArticulo(req.params.id, req.clienteId);
+  await articulos.activarArticulo(req.articulo.id, req.clienteId);
   ok(res, 'Artículo Reactivado');
 }));
 
-router.post('/clientes/:clienteId/importar', resolveClienteAccess, uploadExcel.single('archivo'), async (req, res) => {
+// Los errores de multer (archivo muy grande, más de un archivo) en español y como 400.
+function subirExcel(req, res, next) {
+  uploadExcel.single('archivo')(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') return falla(res, 400, 'El Archivo Pesa Más De 10 MB');
+    if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') return falla(res, 400, 'Subí Un Solo Archivo');
+    if (err.code === 'TIPO_INVALIDO') return falla(res, 400, 'El Archivo Tiene Que Ser Un Excel (.xlsx)');
+    next(err);
+  });
+}
+
+router.post('/clientes/:clienteId/importar', resolveClienteAccess, h(async (req, res, next) => {
+  // Con Shopify conectado, el catálogo lo manda Shopify (la pantalla ni muestra el botón).
+  if (await shopify.obtenerConexionActiva(req.clienteId)) return falla(res, 409, 'Con Shopify Conectado, Los Artículos Se Cargan Desde Shopify');
+  if (importacion.enCurso(req.clienteId)) return falla(res, 409, 'Ya Hay Una Importación En Curso, Esperá A Que Termine');
+  next();
+}), subirExcel, h(async (req, res) => {
   if (!req.file) return falla(res, 400, 'No se recibió ningún archivo.');
-  try {
-    const filas = await importacion.leerFilas(req.file.buffer);
-    if (!filas.length) return falla(res, 400, 'El archivo no tiene filas de datos.');
-    res.json({ ok: true, jobId: importacion.crearJob(req.clienteId, filas) });
-  } catch (err) {
-    falla(res, 400, err.message);
+  // Un .xlsx es un ZIP: tiene que empezar con "PK".
+  if (req.file.buffer.length < 4 || req.file.buffer.toString('latin1', 0, 2) !== 'PK') {
+    return falla(res, 400, 'El Archivo Tiene Que Ser Un Excel (.xlsx)');
   }
-});
+  let filas;
+  try {
+    filas = await importacion.leerFilas(req.file.buffer);
+  } catch (err) {
+    // Los errores propios (formato del modelo, demasiadas filas) ya vienen en español;
+    // los de ExcelJS (archivo dañado) no se muestran tal cual.
+    const propio = /modelo|hoja|filas/i.test(err.message);
+    if (!propio) console.warn('[importar] No se pudo leer el Excel:', err.message);
+    return falla(res, 400, propio ? err.message : 'No Se Pudo Leer El Archivo: ¿Es Un Excel Válido?');
+  }
+  if (!filas.length) return falla(res, 400, 'El archivo no tiene filas de datos.');
+  const jobId = importacion.crearJob(req.clienteId, filas);
+  if (!jobId) return falla(res, 409, 'Ya Hay Una Importación En Curso, Esperá A Que Termine');
+  res.json({ ok: true, jobId });
+}));
 
 router.get('/clientes/:clienteId/importar/:jobId', resolveClienteAccess, (req, res) => {
   const estado = importacion.obtenerEstado(req.params.jobId, req.clienteId);
@@ -478,7 +684,7 @@ router.get('/clientes/:clienteId/chats', resolveClienteAccess, h(async (req, res
       estado: req.query.estado,
       bot: req.query.bot,
     }),
-    chats.huellaBandeja(req.clienteId),
+    huellaDe(req.clienteId),
   ]);
   res.set('Cache-Control', 'no-store');
   res.json({ ...resultado, huella, estados: chats.ESTADOS, envioHabilitado: bot.envioHabilitado() });
@@ -487,7 +693,7 @@ router.get('/clientes/:clienteId/chats', resolveClienteAccess, h(async (req, res
 // Polling: cambia con cada mensaje nuevo o cuando se pausa/reactiva un chat.
 router.get('/clientes/:clienteId/chats/novedades', resolveClienteAccess, h(async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ huella: await chats.huellaBandeja(req.clienteId) });
+  res.json({ huella: await huellaDe(req.clienteId) });
 }));
 
 router.get('/clientes/:clienteId/chats/:userId', resolveClienteAccess, h(async (req, res) => {
@@ -565,22 +771,22 @@ router.get('/clientes/:clienteId/escalamientos', resolveClienteAccess, h(async (
 router.get('/clientes/:clienteId/reclamos-bandeja', resolveClienteAccess, h(async (req, res) => {
   const [resultado, huella] = await Promise.all([
     chats.listarReclamosBandeja(req.clienteId, { page: paginaDe(req), estado: req.query.estado, q: texto(req.query.q, 50) }),
-    chats.huellaBandeja(req.clienteId),
+    huellaDe(req.clienteId),
   ]);
   res.set('Cache-Control', 'no-store');
   res.json({ ...resultado, huella, envioHabilitado: bot.envioHabilitado() });
 }));
 
 router.post('/clientes/:clienteId/escalamientos/:id/estado', resolveClienteAccess, h(async (req, res) => {
-  try {
-    await escalamientos.actualizarEstado(req.params.id, req.clienteId, req.body.estado);
-  } catch (err) {
-    if (err instanceof escalamientos.EstadoFinalError) {
-      console.warn(`[escalamientos] Intento de modificar un escalamiento ya resuelto (id=${req.params.id})`);
-      return falla(res, 409, 'Escalamiento Ya Resuelto');
-    }
-    throw err;
+  const estado = req.body?.estado;
+  if (!escalamientos.ESTADOS.includes(estado)) return falla(res, 400, 'Estado Inválido');
+  const resultado = await escalamientos.actualizarEstado(req.params.id, req.clienteId, estado);
+  if (resultado === 'no_existe') return falla(res, 404, 'Reclamo No Encontrado');
+  if (resultado === 'final') {
+    console.warn(`[escalamientos] Intento de modificar un escalamiento ya resuelto (id=${req.params.id})`);
+    return falla(res, 409, 'Escalamiento Ya Resuelto');
   }
+  if (resultado !== 'ok') return falla(res, 400, 'Estado Inválido');
   ok(res, 'Estado Actualizado');
 }));
 
@@ -590,7 +796,7 @@ router.post('/clientes/:clienteId/escalamientos/:id/estado', resolveClienteAcces
 router.get('/clientes/:clienteId/humano-solicitado', resolveClienteAccess, h(async (req, res) => {
   const [resultado, huella] = await Promise.all([
     chats.listarHumanoSolicitado(req.clienteId, { page: paginaDe(req), estado: req.query.estado, q: texto(req.query.q, 50) }),
-    chats.huellaBandeja(req.clienteId),
+    huellaDe(req.clienteId),
   ]);
   res.set('Cache-Control', 'no-store');
   res.json({ ...resultado, huella, envioHabilitado: bot.envioHabilitado() });
@@ -623,25 +829,23 @@ router.get('/clientes/:clienteId/pedidos/:id/detalle', resolveClienteAccess, h(a
 }));
 
 router.post('/clientes/:clienteId/pedidos/:id/notas', resolveClienteAccess, h(async (req, res) => {
-  await pedidos.actualizarNotas(req.params.id, req.clienteId, texto(req.body.notas, 500));
+  await pedidos.actualizarNotas(req.params.id, req.clienteId, texto(req.body?.notas, 500));
   ok(res, 'Notas Guardadas');
 }));
 
 router.post('/clientes/:clienteId/pedidos/:id/estado', resolveClienteAccess, h(async (req, res) => {
-  const estado = req.body.estado;
+  const estado = req.body?.estado;
+  // "reclamado" lo pone el bot; a mano solo se elige uno de estos.
+  if (!pedidos.ESTADOS_ELEGIBLES.includes(estado)) return falla(res, 400, 'Estado Inválido');
   const conexion = await shopify.obtenerConexionActiva(req.clienteId);
-  try {
-    await pedidos.actualizarEstado(req.params.id, req.clienteId, estado, { omitirStock: !!conexion });
-  } catch (err) {
-    if (err instanceof pedidos.EstadoFinalError) {
-      console.warn(`[pedidos] Intento de modificar un pedido ya finalizado (id=${req.params.id})`);
-      return falla(res, 409, 'Pedido en Estado Final');
-    }
-    if (err.message === 'Un pedido reclamado solo puede pasar a Solucionado.') {
-      return falla(res, 409, 'Reclamado Solo Puede Pasar a Solucionado');
-    }
-    throw err;
+  const resultado = await pedidos.actualizarEstado(req.params.id, req.clienteId, estado, { omitirStock: !!conexion });
+  if (resultado === 'no_existe') return falla(res, 404, 'Pedido No Encontrado');
+  if (resultado === 'final') {
+    console.warn(`[pedidos] Intento de modificar un pedido ya finalizado (id=${req.params.id})`);
+    return falla(res, 409, 'Pedido en Estado Final');
   }
+  if (resultado === 'solo_solucionado') return falla(res, 409, 'Reclamado Solo Puede Pasar a Solucionado');
+  if (resultado !== 'ok') return falla(res, 400, 'Estado Inválido');
 
   // El estado en el portal ya quedó guardado; lo de Shopify nunca lo revierte.
   const r = conexion

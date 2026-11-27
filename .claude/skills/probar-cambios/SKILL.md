@@ -21,13 +21,13 @@ Pasos:
 4. Para reiniciar el server, buscá el PID con `netstat -ano | grep :3197` y cortalo con `taskkill //PID <pid> //F`.
 
 Tené en cuenta:
-- Con el login por formulario y la contraseña `cliente`, Chrome muestra el aviso de "contraseña filtrada", que bloquea el mouse en el navegador de prueba. Para ese usuario logueate con `fetch('/api/login')` y después `page.goto`.
+- Con el login por formulario y la contraseña `cliente`, Chrome muestra el aviso de "contraseña filtrada", que bloquea el mouse en el navegador de prueba. Para ese usuario logueate con `fetch('/api/login')` (con el header `X-Requested-With: portal`, que la API exige en todo lo que no sea GET) y después `page.goto`.
 - Los toasts (arriba a la derecha) pueden tapar botones: cerralos con un clic antes de hacer clic ahí.
 - Los `<th>` se muestran en mayúsculas por CSS, así que compará `innerText` sin distinguir mayúsculas.
 
 ## API sola
 
-Con el `fake-server.js` levantado: `curl -s -c c.txt -b c.txt -H 'Content-Type: application/json' -X POST -d '{"email":"admin@test.com","password":"admin"}' localhost:3197/api/login` y después las rutas `/api/...` con la misma cookie.
+Con el `fake-server.js` levantado: `curl -s -c c.txt -b c.txt -H 'Content-Type: application/json' -H 'X-Requested-With: portal' -X POST -d '{"email":"admin@test.com","password":"admin"}' localhost:3197/api/login` y después las rutas `/api/...` con la misma cookie.
 
 ## Servicios (SQL) con DB falsa
 

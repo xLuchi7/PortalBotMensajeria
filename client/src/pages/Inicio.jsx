@@ -112,7 +112,7 @@ export default function Inicio() {
 // Espera unos segundos para juntar en una sola recarga los avisos que llegan
 // seguidos (el mensaje del cliente y la respuesta del bot, por ejemplo).
 function useResumenEnVivo(reload) {
-  useEnVivo(TIPOS_EVENTO, reload, { esperaMs: 3000 });
+  useEnVivo(TIPOS_EVENTO, reload, { esperaMs: 10000 }); // el resumen es pesado: se agrupan los avisos de 10 s
 }
 
 function useAhora(cadaMs) {

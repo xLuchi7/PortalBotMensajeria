@@ -44,10 +44,25 @@ function crearFuente(clienteId) {
   };
   abrir();
 
+  // Al irse de la página (o si el navegador la guarda en el back/forward cache)
+  // se corta la conexión: si no, quedaba abierta y, con varias, el navegador se
+  // quedaba sin conexiones al servidor (6 por sitio en HTTP/1.1) y todo lo demás
+  // quedaba en espera. Al volver a la página se reabre.
+  const alIrse = () => { clearTimeout(reintento); fuente?.close(); conectado = false; huboCorte = true; };
+  const alVolver = (e) => { if (e.persisted && !cerrada) abrir(); };
+  window.addEventListener('pagehide', alIrse);
+  window.addEventListener('pageshow', alVolver);
+
   return {
     get conectado() { return conectado; },
     suscribir(f) { oyentes.add(f); return () => oyentes.delete(f); },
-    cerrar() { cerrada = true; clearTimeout(reintento); fuente?.close(); },
+    cerrar() {
+      cerrada = true;
+      clearTimeout(reintento);
+      fuente?.close();
+      window.removeEventListener('pagehide', alIrse);
+      window.removeEventListener('pageshow', alVolver);
+    },
   };
 }
 
@@ -77,15 +92,21 @@ export function useEnVivo(tipos, alCambiar, { fuente: propia, esperaMs = 400 } =
   useEffect(() => {
     const aceptados = new Set(clave.split(','));
     let espera = null;
-    const disparar = () => { clearTimeout(espera); espera = setTimeout(() => callback.current(), esperaMs); };
+    let juntados = [];
+    // alCambiar recibe los eventos agrupados (vacío si fue por volver a la pestaña).
+    const disparar = (e) => {
+      if (e) juntados.push(e);
+      clearTimeout(espera);
+      espera = setTimeout(() => { const lote = juntados; juntados = []; callback.current(lote); }, esperaMs);
+    };
 
     const desuscribir = fuente?.suscribir(e => {
-      if (e.tipo === 'reconectado' || aceptados.has(e.tipo)) disparar();
+      if (e.tipo === 'reconectado' || aceptados.has(e.tipo)) disparar(e);
     });
     const alVolver = () => { if (!document.hidden) disparar(); };
     document.addEventListener('visibilitychange', alVolver);
     const respaldo = setInterval(() => {
-      if (!document.hidden && !fuente?.conectado) callback.current();
+      if (!document.hidden && !fuente?.conectado) callback.current([]);
     }, RESPALDO_MS);
 
     return () => {

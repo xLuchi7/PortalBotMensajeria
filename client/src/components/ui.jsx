@@ -94,13 +94,19 @@ export function ErrorCarga({ error, onReintentar }) {
 // Paginado con ?page= en la URL (conserva el resto de los parámetros).
 export function Pagination({ page, totalPages, compacto = false }) {
   const [params, setParams] = useSearchParams();
-  if (totalPages <= 1) return null;
-  const ir = p => {
+  const ir = (p, { scroll = true } = {}) => {
     const nuevos = new URLSearchParams(params);
     if (p > 1) nuevos.set('page', p); else nuevos.delete('page');
-    setParams(nuevos);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setParams(nuevos, { replace: !scroll });
+    if (scroll) window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+  // Página que quedó más allá del final (ej. se atendieron los chats de la última
+  // página): se vuelve sola a la última que existe, en vez de quedar vacía y sin paginador.
+  const pasada = page > 1 && page > totalPages;
+  useEffect(() => {
+    if (pasada) ir(Math.max(1, totalPages), { scroll: false });
+  }, [pasada]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (totalPages <= 1 || pasada) return null;
   return (
     <div className={compacto ? 'inbox-pagination' : 'pagination'}>
       <button type="button" className="btn btn-outline" disabled={page <= 1} onClick={() => ir(page - 1)}>

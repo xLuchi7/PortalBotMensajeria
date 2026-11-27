@@ -44,7 +44,7 @@ const ok = (nombre, cond, extra = '') => { resultados.push(`${cond ? 'OK  ' : 'F
 
   try {
     // ── Login ──
-    await page.goto(`${BASE}/clientes/1/chats`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE}/clientes/1/chats`, { waitUntil: 'networkidle2' });
     ok('sin sesión manda al login', page.url().endsWith('/login'));
     await shot('01-login');
     await page.click('button[type=submit]');
@@ -112,7 +112,7 @@ const ok = (nombre, cond, extra = '') => { resultados.push(`${cond ? 'OK  ' : 'F
     await sleep(900);
     ok('búsqueda en vivo', page.url().includes('q=Patricio') && (await page.$$('.chat-items .chat-item')).length === 1);
     await page.$eval('.chat-search input', e => { e.value = ''; });
-    await page.goto(`${BASE}/clientes/1/mensajes?chat=59894422029`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE}/clientes/1/mensajes?chat=59894422029`, { waitUntil: 'networkidle2' });
     ok('link viejo /mensajes redirige a chats', page.url().includes('/chats?chat=59894422029'));
     ok('chat con ventana cerrada muestra aviso de 24 hs', await esperarTexto('Pasaron más de 24 hs'));
 
@@ -159,7 +159,7 @@ const ok = (nombre, cond, extra = '') => { resultados.push(`${cond ? 'OK  ' : 'F
     await stock.type('7');
     await page.click('tr:nth-child(2) .stock-form button');
     ok('guardar stock', await esperarTexto('Stock Actualizado'));
-    await page.goto(`${BASE}/clientes/1/articulos/1/editar`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE}/clientes/1/articulos/1/editar`, { waitUntil: 'networkidle2' });
     ok('editar artículo de Shopify vuelve a la lista', await esperarTexto('Este Artículo Se Edita En Shopify') && page.url().endsWith('/articulos'));
 
     // ── Mi Negocio ──
@@ -178,7 +178,7 @@ const ok = (nombre, cond, extra = '') => { resultados.push(`${cond ? 'OK  ' : 'F
     ok('guardar contexto', await esperarTexto('Información Guardada'));
     await page.click('.bot-switch .bot-toggle');
     ok('apagar bot general', await esperarTexto('Bot Apagado'));
-    ok('menú lateral refleja bot apagado', await page.$eval('.sidebar-bot', e => e.classList.contains('is-off')));
+    ok('menú lateral refleja bot apagado', await page.$eval('.sidebar-negocio', e => e.classList.contains('is-off')));
     await shot('11-negocio');
     await page.click('.bot-switch .bot-toggle');
     await esperarTexto('Bot Encendido');
@@ -191,34 +191,31 @@ const ok = (nombre, cond, extra = '') => { resultados.push(`${cond ? 'OK  ' : 'F
     await sleep(300);
     await shot('12-integraciones-conectado');
     ok('integraciones: stats', await esperarTexto('Pedidos enviados'));
-    await page.goto(`${BASE}/clientes/1/integraciones?sync=11111111-2222-3333-4444-555555555555`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE}/clientes/1/integraciones?sync=11111111-2222-3333-4444-555555555555`, { waitUntil: 'networkidle2' });
     ok('?sync= vencido muestra error sin romper', await esperarTexto('No se pudo sincronizar'));
     await clickText('dialog[open] button', 'Cerrar');
     await sleep(300);
     ok('cerrar saca ?sync= de la URL', !page.url().includes('sync='));
 
-    // ── Escalamientos / Consultas ──
-    await page.click('a[href="/clientes/1/escalamientos"]');
-    await esperarTexto('Producto llegó roto');
-    await shot('13-escalamientos');
-    await (await page.$('select.badge-select')).select('en_proceso');
-    ok('escalamiento en proceso', await esperarTexto('Estado Actualizado'));
+    // ── Consultas ──
+    // (Reclamos es una bandeja que sale de usp_Portal_ReclamosBandeja, sin stub acá:
+    // el cambio de estado de un reclamo se prueba por API.)
     await page.click('a[href="/clientes/1/consultas"]');
     ok('consultas', await esperarTexto('no lo encontró'));
     await shot('14-consultas');
 
     // ── Admin: otro cliente sin Shopify ──
-    await page.goto(`${BASE}/clientes`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE}/clientes`, { waitUntil: 'networkidle2' });
     await esperarTexto('Luma Uruguay');
     await shot('15-clientes');
     await clickText('a', 'Entrar');
-    await page.goto(`${BASE}/clientes/2/articulos`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE}/clientes/2/articulos`, { waitUntil: 'networkidle2' });
     await esperarTexto('Taza');
     ok('cliente sin Shopify: Importar Excel', await esperarTexto('Importar Excel'));
     ok('sidebar muestra el cliente que se ve', await esperarTexto('Luma Uruguay'));
     await clickText('button', 'Importar Excel');
     await page.waitForSelector('dialog[open] .dropzone');
-    const tmp = path.join(__dirname, 'prueba.xlsx'); fs.writeFileSync(tmp, 'contenido falso de excel');
+    const tmp = path.join(__dirname, 'prueba.xlsx'); fs.writeFileSync(tmp, 'PK contenido falso de excel'); // un .xlsx es un ZIP: el servidor exige que empiece con PK
     const input = await page.$('dialog[open] input[type=file]');
     await input.uploadFile(tmp);
     await sleep(200);
@@ -237,22 +234,22 @@ const ok = (nombre, cond, extra = '') => { resultados.push(`${cond ? 'OK  ' : 'F
     await page.type('input[name=precio]', '150');
     await clickText('button', 'Crear artículo');
     ok('crear artículo', await esperarTexto('Artículo Creado Correctamente') && await esperarTexto('Llavero'));
-    await page.goto(`${BASE}/clientes/2/integraciones`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE}/clientes/2/integraciones`, { waitUntil: 'networkidle2' });
     ok('integraciones sin app: asistente admin', await esperarTexto('Creá la app en Shopify'));
     await shot('18-integraciones-asistente');
-    ok('bot apagado: banner en chats', await (async () => { await page.goto(`${BASE}/clientes/2/chats`, { waitUntil: 'networkidle0' }); return esperarTexto('El bot está apagado para todos los chats'); })());
+    ok('bot apagado: banner en chats', await (async () => { await page.goto(`${BASE}/clientes/2/chats`, { waitUntil: 'networkidle2' }); return esperarTexto('El bot está apagado para todos los chats'); })());
 
     // ── Admin: formularios ──
-    await page.goto(`${BASE}/clientes/nuevo`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE}/clientes/nuevo`, { waitUntil: 'networkidle2' });
     await page.type('input[name=razonSocial]', 'Otro');
     await page.type('input[name=cuit]', '20123456789');
     await page.type('input[name=telefono]', '123');
     await clickText('button', 'Crear cliente');
     ok('cliente duplicado muestra error', await esperarTexto('Ya existe un Cliente con ese CUIT'));
-    await page.goto(`${BASE}/usuarios`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE}/usuarios`, { waitUntil: 'networkidle2' });
     await esperarTexto('cliente@test.com');
     await shot('19-usuarios');
-    await page.goto(`${BASE}/usuarios/2/editar`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE}/usuarios/2/editar`, { waitUntil: 'networkidle2' });
     await page.waitForSelector('select[name=clienteId]');
     ok('editar usuario carga cliente', (await page.$eval('select[name=clienteId]', e => e.value)) === '1');
     await page.select('select[name=rol]', 'admin');
@@ -264,23 +261,23 @@ const ok = (nombre, cond, extra = '') => { resultados.push(`${cond ? 'OK  ' : 'F
     ok('logout', true);
     // Login por fetch: el formulario con la contraseña "cliente" dispara el aviso
     // de contraseña filtrada de Chrome, que bloquea el mouse en el navegador de prueba.
-    await page.evaluate(() => fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'cliente@test.com', password: 'cliente' }) }));
-    await page.goto(`${BASE}/`, { waitUntil: 'networkidle0' });
-    await page.waitForFunction(() => location.pathname === '/clientes/1/chats', { timeout: 5000 });
-    ok('cliente entra a sus chats', true);
+    await page.evaluate(() => fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'portal' }, body: JSON.stringify({ email: 'cliente@test.com', password: 'cliente' }) }));
+    await page.goto(`${BASE}/`, { waitUntil: 'networkidle2' });
+    await page.waitForFunction(() => location.pathname === '/clientes/1/inicio', { timeout: 5000 });
+    ok('cliente entra a su Inicio', true);
     ok('cliente no ve Administración', !(await texto()).includes('Administración'));
-    await page.goto(`${BASE}/clientes/2/chats`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE}/clientes/2/chats`, { waitUntil: 'networkidle2' });
     await sleep(300);
-    ok('cliente no entra a otro cliente', page.url().endsWith('/clientes/1/chats'), page.url());
-    await page.goto(`${BASE}/usuarios`, { waitUntil: 'networkidle0' });
+    ok('cliente no entra a otro cliente', !page.url().includes('/clientes/2'), page.url());
+    await page.goto(`${BASE}/usuarios`, { waitUntil: 'networkidle2' });
     await sleep(300);
     ok('cliente no entra a Usuarios', !page.url().endsWith('/usuarios'), page.url());
-    await page.goto(`${BASE}/clientes/1/integraciones`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE}/clientes/1/integraciones`, { waitUntil: 'networkidle2' });
     ok('cliente no ve credenciales', !(await texto()).includes('Credenciales de la app'));
 
     // ── Celular ──
     await page.setViewport({ width: 390, height: 844 });
-    await page.goto(`${BASE}/clientes/1/chats`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE}/clientes/1/chats`, { waitUntil: 'networkidle2' });
     await sleep(400);
     await shot('20-movil-lista');
     const tocar = async sel => { const b = await (await page.$(sel)).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };

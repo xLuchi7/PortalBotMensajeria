@@ -84,10 +84,15 @@ async function flush() {
   try {
     await ejecutar('dbo.usp_Logs_Insertar', {
       origen: [sql.NVarChar(20), ORIGEN],
-      logs: [sql.NVarChar(sql.MAX), JSON.stringify(lote.map(({ t, ...l }) => ({ hace: ahora - t, ...l })))],
+      logs: [sql.NVarChar(sql.MAX), JSON.stringify(lote.map(({ t, intentos, ...l }) => ({ hace: ahora - t, ...l })))],
     });
   } catch (err) {
-    consolaOriginal.error(`[logs] No se pudieron guardar ${lote.length} logs:`, err.message);
+    // La base puede estar despertando: el lote vuelve a la cola (hasta 3 intentos y
+    // sin pasar el tope), en vez de perderse.
+    const reintentar = lote.filter(l => (l.intentos = (l.intentos || 0) + 1) < 3);
+    const lugar = Math.max(0, MAX_COLA - cola.length);
+    if (lugar > 0) cola.unshift(...reintentar.slice(-lugar));
+    consolaOriginal.error(`[logs] No se pudieron guardar ${lote.length} logs (${reintentar.length} se reintentan):`, err.message);
   } finally {
     escribiendo = false;
   }
@@ -104,13 +109,21 @@ async function purgar() {
   }
 }
 
+// Objetos circulares o con BigInt hacen fallar JSON.stringify: un console.error
+// nunca tiene que tirar una excepción en quien lo llamó.
+function aTextoConsola(a) {
+  if (a instanceof Error) return a.stack || a.message;
+  if (typeof a === 'string') return a;
+  try { return JSON.stringify(a) ?? String(a); } catch { return String(a); }
+}
+
 // console.warn / console.error de cualquier parte del portal también van a Logs
 // (con el contexto del request), así ningún error queda solo en la consola.
 function capturarConsola() {
   for (const nivel of ['warn', 'error']) {
     console[nivel] = (...args) => {
       consolaOriginal[nivel](...args);
-      const texto = args.map(a => (a instanceof Error ? a.stack || a.message : typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+      const texto = args.map(aTextoConsola).join(' ');
       const etiqueta = /^\[([\w-]+)\]/.exec(texto)?.[1];
       registrar(nivel, etiqueta ? `consola_${etiqueta}` : 'consola', { detalle: texto });
     };
@@ -122,9 +135,15 @@ function iniciar() {
   setInterval(flush, FLUSH_MS).unref();
   setTimeout(purgar, 30 * 1000).unref();
   setInterval(purgar, PURGA_MS).unref();
-  // Al apagar (deploy en Railway) se manda lo que quedó en la cola.
-  for (const senal of ['SIGTERM', 'SIGINT']) {
-    process.once(senal, () => { flush().finally(() => process.exit(0)); });
+}
+
+// Al apagar (deploy en Railway, ver index.js): manda todo lo que quedó en la
+// cola, de a lotes, con un tope de tiempo para no colgar el apagado.
+async function vaciar(timeoutMs = 8000) {
+  const limite = Date.now() + timeoutMs;
+  while (cola.length && Date.now() < limite) {
+    if (escribiendo) await new Promise(r => setTimeout(r, 50));
+    else await flush();
   }
 }
 
@@ -165,4 +184,4 @@ async function listar({ page = 1, origen, nivel, clienteId, evento, q } = {}) {
   };
 }
 
-module.exports = { iniciar, conContexto, registrar, info, warn, error, flush, listar, DIAS_RETENCION };
+module.exports = { iniciar, conContexto, registrar, info, warn, error, flush, vaciar, listar, DIAS_RETENCION };

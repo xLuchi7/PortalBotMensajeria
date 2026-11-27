@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { getPool, sql } = require('./db');
+const { ejecutar, sql } = require('./db');
 const shopify = require('./shopifyClient');
 const apps = require('./shopifyAppService');
 const oauth = require('./shopifyOAuthService');
@@ -183,126 +183,65 @@ function aArticulo(producto, variante) {
   };
 }
 
-// Primero por variante ya vinculada; si no, se "adopta" un Artículo manual con
-// el mismo código (SKU) o el mismo nombre, para no duplicar lo que el Cliente
-// ya había cargado a mano antes de conectar Shopify.
-async function buscarArticulo(pool, clienteId, a) {
-  const porVariante = await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .input('variantId', sql.NVarChar, a.shopifyVariantId)
-    .query('SELECT id FROM Articulos WHERE clienteId = @clienteId AND shopifyVariantId = @variantId');
-  if (porVariante.recordset[0]) return porVariante.recordset[0].id;
+const tocadasDuranteSync = new Map(); // clienteId -> Set<variantId> (solo mientras corre sincronizarTodo)
 
-  if (a.codigo) {
-    const porCodigo = await pool
-      .request()
-      .input('clienteId', sql.Int, clienteId)
-      .input('codigo', sql.NVarChar, a.codigo)
-      .query('SELECT TOP 1 id FROM Articulos WHERE clienteId = @clienteId AND codigo = @codigo AND shopifyVariantId IS NULL ORDER BY activo DESC, id');
-    if (porCodigo.recordset[0]) return porCodigo.recordset[0].id;
-  }
-
-  const porNombre = await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .input('nombre', sql.NVarChar, a.nombre)
-    .query('SELECT TOP 1 id FROM Articulos WHERE clienteId = @clienteId AND nombre = @nombre AND shopifyVariantId IS NULL ORDER BY activo DESC, id');
-  return porNombre.recordset[0]?.id ?? null;
-}
-
-async function upsertArticulo(pool, clienteId, a) {
-  const existenteId = await buscarArticulo(pool, clienteId, a);
-
-  const transaction = new sql.Transaction(pool);
-  await transaction.begin();
+// Un webhook y la sync completa (o dos webhooks) pueden querer crear la misma
+// variante a la vez: el índice único UX_Articulos_shopifyVariant frena el segundo
+// INSERT y se reintenta una vez, que ya la encuentra y hace UPDATE.
+async function upsertArticulo(clienteId, a, reintento = false) {
+  // Si hay una sync completa en curso, se anota: lo que llegó por webhook mientras
+  // tanto no se tiene que desactivar al final por "no haberlo visto".
+  tocadasDuranteSync.get(clienteId)?.add(a.shopifyVariantId);
   try {
-    const req = () => new sql.Request(transaction)
-      .input('clienteId', sql.Int, clienteId)
-      .input('codigo', sql.NVarChar(50), a.codigo)
-      .input('nombre', sql.NVarChar(200), a.nombre)
-      .input('descripcion', sql.NVarChar(sql.MAX), a.descripcion)
-      .input('precio', sql.Decimal(12, 2), a.precio)
-      .input('activo', sql.Bit, a.activo ? 1 : 0)
-      .input('usaStock', sql.Bit, a.usaStock ? 1 : 0)
-      .input('productId', sql.NVarChar, a.shopifyProductId)
-      .input('variantId', sql.NVarChar, a.shopifyVariantId)
-      .input('inventoryItemId', sql.NVarChar, a.shopifyInventoryItemId)
-      .input('imagenes', sql.NVarChar(sql.MAX), a.imagenes)
-      .input('precioComparacion', sql.Decimal(12, 2), a.precioComparacion)
-      .input('costo', sql.Decimal(12, 2), a.costo)
-      .input('codigoBarras', sql.NVarChar(100), a.codigoBarras)
-      .input('marca', sql.NVarChar(255), a.marca)
-      .input('tipoProducto', sql.NVarChar(255), a.tipoProducto)
-      .input('categoria', sql.NVarChar(500), a.categoria)
-      .input('etiquetas', sql.NVarChar(sql.MAX), a.etiquetas)
-      .input('colecciones', sql.NVarChar(sql.MAX), a.colecciones)
-      .input('opciones', sql.NVarChar(sql.MAX), a.opciones)
-      .input('urlTienda', sql.NVarChar(500), a.urlTienda)
-      .input('shopifyDatos', sql.NVarChar(sql.MAX), a.shopifyDatos)
-      .input('shopifyActualizado', sql.DateTime2, a.shopifyActualizado);
-
-    let articuloId = existenteId;
-    if (existenteId) {
-      await req().input('id', sql.Int, existenteId).query(`
-        UPDATE Articulos SET
-          codigo = @codigo, nombre = @nombre, descripcion = @descripcion, precio = @precio,
-          activo = @activo, usaStock = @usaStock, origen = 'shopify', imagenes = @imagenes,
-          precioComparacion = @precioComparacion, costo = @costo, codigoBarras = @codigoBarras,
-          marca = @marca, tipoProducto = @tipoProducto, categoria = @categoria, etiquetas = @etiquetas,
-          colecciones = @colecciones, opciones = @opciones, urlTienda = @urlTienda,
-          shopifyDatos = @shopifyDatos, shopifyActualizado = @shopifyActualizado,
-          shopifyProductId = @productId, shopifyVariantId = @variantId, shopifyInventoryItemId = @inventoryItemId
-        WHERE id = @id AND clienteId = @clienteId
-      `);
-    } else {
-      const r = await req().query(`
-        INSERT INTO Articulos
-          (clienteId, codigo, nombre, descripcion, precio, activo, usaStock, origen, shopifyProductId, shopifyVariantId, shopifyInventoryItemId, imagenes,
-           precioComparacion, costo, codigoBarras, marca, tipoProducto, categoria, etiquetas, colecciones, opciones, urlTienda,
-           shopifyDatos, shopifyActualizado)
-        OUTPUT INSERTED.id
-        VALUES (@clienteId, @codigo, @nombre, @descripcion, @precio, @activo, @usaStock, 'shopify', @productId, @variantId, @inventoryItemId, @imagenes,
-                @precioComparacion, @costo, @codigoBarras, @marca, @tipoProducto, @categoria, @etiquetas, @colecciones, @opciones, @urlTienda,
-                @shopifyDatos, @shopifyActualizado)
-      `);
-      articuloId = r.recordset[0].id;
-    }
-
-    await new sql.Request(transaction)
-      .input('articuloId', sql.Int, articuloId)
-      .input('cantidad', sql.Int, a.stock)
-      .query(`
-        IF EXISTS (SELECT 1 FROM Stock WHERE articuloId = @articuloId)
-          UPDATE Stock SET cantidad = @cantidad, actualizado = SYSUTCDATETIME() WHERE articuloId = @articuloId
-        ELSE
-          INSERT INTO Stock (articuloId, cantidad) VALUES (@articuloId, @cantidad)
-      `);
-
-    await transaction.commit();
-    return { creado: !existenteId };
+    return await upsertArticuloUnaVez(clienteId, a);
   } catch (err) {
-    await transaction.rollback();
+    if (!reintento && (err.number === 2627 || err.number === 2601)) return upsertArticulo(clienteId, a, true);
     throw err;
   }
 }
 
+// usp_Portal_ShopifyArticuloGuardar busca el artículo (por variante ya vinculada;
+// si no, "adopta" uno manual con el mismo código o nombre, para no duplicar lo que
+// el Cliente ya había cargado a mano) y lo guarda con su Stock en una transacción.
+async function upsertArticuloUnaVez(clienteId, a) {
+  const r = await ejecutar('dbo.usp_Portal_ShopifyArticuloGuardar', {
+    clienteId: [sql.Int, clienteId],
+    codigo: [sql.NVarChar(50), a.codigo],
+    nombre: [sql.NVarChar(200), a.nombre],
+    descripcion: [sql.NVarChar(sql.MAX), a.descripcion],
+    precio: [sql.Decimal(12, 2), a.precio],
+    activo: [sql.Bit, a.activo ? 1 : 0],
+    usaStock: [sql.Bit, a.usaStock ? 1 : 0],
+    stock: [sql.Int, a.stock],
+    productId: [sql.NVarChar(100), a.shopifyProductId],
+    variantId: [sql.NVarChar(100), a.shopifyVariantId],
+    inventoryItemId: [sql.NVarChar(100), a.shopifyInventoryItemId],
+    imagenes: [sql.NVarChar(sql.MAX), a.imagenes],
+    precioComparacion: [sql.Decimal(12, 2), a.precioComparacion],
+    costo: [sql.Decimal(12, 2), a.costo],
+    codigoBarras: [sql.NVarChar(100), a.codigoBarras],
+    marca: [sql.NVarChar(255), a.marca],
+    tipoProducto: [sql.NVarChar(255), a.tipoProducto],
+    categoria: [sql.NVarChar(500), a.categoria],
+    etiquetas: [sql.NVarChar(sql.MAX), a.etiquetas],
+    colecciones: [sql.NVarChar(sql.MAX), a.colecciones],
+    opciones: [sql.NVarChar(sql.MAX), a.opciones],
+    urlTienda: [sql.NVarChar(500), a.urlTienda],
+    shopifyDatos: [sql.NVarChar(sql.MAX), a.shopifyDatos],
+    shopifyActualizado: [sql.DateTime2, a.shopifyActualizado],
+  });
+  return { creado: Boolean(r.recordset[0]?.creado) };
+}
+
 // Variantes que ya no existen en Shopify (borradas) → se desactivan, no se
 // borran: puede haber Pedidos viejos apuntando a ese Artículo.
-async function desactivarFaltantes(pool, clienteId, variantIdsVistos, { productId = null } = {}) {
-  const vistos = JSON.stringify([...variantIdsVistos]);
-  const r = await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .input('vistos', sql.NVarChar(sql.MAX), vistos)
-    .input('productId', sql.NVarChar, productId)
-    .query(`
-      UPDATE Articulos SET activo = 0
-      WHERE clienteId = @clienteId AND origen = 'shopify' AND activo = 1
-        AND (@productId IS NULL OR shopifyProductId = @productId)
-        AND shopifyVariantId NOT IN (SELECT value FROM OPENJSON(@vistos))
-    `);
-  return r.rowsAffected[0] || 0;
+async function desactivarFaltantes(clienteId, variantIdsVistos, { productId = null } = {}) {
+  const r = await ejecutar('dbo.usp_Portal_ShopifyArticulosDesactivar', {
+    clienteId: [sql.Int, clienteId],
+    vistos: [sql.NVarChar(sql.MAX), JSON.stringify([...variantIdsVistos])],
+    productId: [sql.NVarChar(100), productId],
+  });
+  return r.recordset[0]?.desactivados || 0;
 }
 
 // ── Sync completo ───────────────────────────────────────────────────────────
@@ -321,7 +260,6 @@ async function asegurarWebhooks(clienteId) {
 }
 
 async function sincronizarTodo(clienteId, progreso = {}) {
-  const pool = await getPool();
   await asegurarWebhooks(clienteId);
 
   try {
@@ -332,6 +270,15 @@ async function sincronizarTodo(clienteId, progreso = {}) {
   }
 
   const vistos = new Set();
+  tocadasDuranteSync.set(clienteId, vistos);
+  try {
+    return await recorrerVariantes(clienteId, progreso, vistos);
+  } finally {
+    tocadasDuranteSync.delete(clienteId);
+  }
+}
+
+async function recorrerVariantes(clienteId, progreso, vistos) {
   const productos = new Map(); // un producto puede tener variantes en varias páginas
   for await (const variantes of paginasDeVariantes(clienteId)) {
     const faltan = [...new Set(variantes.map(v => v.product.id))].filter(id => !productos.has(id));
@@ -342,7 +289,7 @@ async function sincronizarTodo(clienteId, progreso = {}) {
       const producto = productos.get(v.product.id);
       try {
         if (!producto) throw new Error('Shopify no devolvió el producto');
-        const { creado } = await upsertArticulo(pool, clienteId, aArticulo(producto, v));
+        const { creado } = await upsertArticulo(clienteId, aArticulo(producto, v));
         if (creado) progreso.creados = (progreso.creados || 0) + 1;
         else progreso.actualizados = (progreso.actualizados || 0) + 1;
       } catch (err) {
@@ -353,7 +300,7 @@ async function sincronizarTodo(clienteId, progreso = {}) {
     }
   }
 
-  progreso.desactivados = await desactivarFaltantes(pool, clienteId, vistos);
+  progreso.desactivados = await desactivarFaltantes(clienteId, vistos);
   await shopify.marcarSync(clienteId);
   return progreso;
 }
@@ -365,24 +312,19 @@ async function sincronizarProducto(clienteId, productId) {
   const producto = (await traerProductos(clienteId, [gid])).get(gid);
   if (!producto) return desactivarProducto(clienteId, productId);
 
-  const pool = await getPool();
   const vistos = new Set();
   for await (const variantes of paginasDeVariantes(clienteId, gid)) {
     for (const v of variantes) {
       vistos.add(v.id);
-      await upsertArticulo(pool, clienteId, aArticulo(producto, v));
+      await upsertArticulo(clienteId, aArticulo(producto, v));
     }
   }
-  await desactivarFaltantes(pool, clienteId, vistos, { productId: producto.id });
+  await desactivarFaltantes(clienteId, vistos, { productId: producto.id });
 }
 
+// Lo borraron en Shopify: se desactivan todas sus variantes.
 async function desactivarProducto(clienteId, productId) {
-  const pool = await getPool();
-  await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .input('productId', sql.NVarChar, shopify.gid('Product', productId))
-    .query("UPDATE Articulos SET activo = 0 WHERE clienteId = @clienteId AND origen = 'shopify' AND shopifyProductId = @productId");
+  await desactivarFaltantes(clienteId, [], { productId: shopify.gid('Product', productId) });
 }
 
 // inventory_levels/update avisa por sucursal; leemos el total disponible de la
@@ -396,21 +338,12 @@ async function actualizarStockDeInventoryItem(clienteId, inventoryItemId) {
   const item = data.inventoryItem;
   if (!item?.variant) return;
 
-  const pool = await getPool();
-  await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .input('variantId', sql.NVarChar, item.variant.id)
-    .input('cantidad', sql.Int, item.tracked ? Math.max(0, Number(item.variant.inventoryQuantity) || 0) : 0)
-    .input('usaStock', sql.Bit, item.tracked ? 1 : 0)
-    .query(`
-      UPDATE a SET a.usaStock = @usaStock
-      FROM Articulos a WHERE a.clienteId = @clienteId AND a.shopifyVariantId = @variantId;
-
-      UPDATE s SET s.cantidad = @cantidad, s.actualizado = SYSUTCDATETIME()
-      FROM Stock s JOIN Articulos a ON a.id = s.articuloId
-      WHERE a.clienteId = @clienteId AND a.shopifyVariantId = @variantId;
-    `);
+  await ejecutar('dbo.usp_Portal_ShopifyStockSet', {
+    clienteId: [sql.Int, clienteId],
+    variantId: [sql.NVarChar(100), item.variant.id],
+    cantidad: [sql.Int, item.tracked ? Math.max(0, Number(item.variant.inventoryQuantity) || 0) : 0],
+    usaStock: [sql.Bit, item.tracked ? 1 : 0],
+  });
 }
 
 // ── Jobs en background (mismo patrón que importService) ─────────────────────
@@ -421,7 +354,6 @@ const jobPorCliente = new Map();
 function crearJobSync(clienteId) {
   const enCurso = jobPorCliente.get(clienteId);
   if (enCurso && jobs.has(enCurso) && !jobs.get(enCurso).terminado) return enCurso;
-
   const jobId = crypto.randomUUID();
   const job = { clienteId, total: 0, procesado: 0, creados: 0, actualizados: 0, desactivados: 0, errores: [], terminado: false };
   jobs.set(jobId, job);
@@ -432,9 +364,16 @@ function crearJobSync(clienteId) {
       job.errorFatal = err.message;
       console.error(`[shopify] Sync falló (cliente ${clienteId}):`, err.message);
     })
-    .finally(() => { job.terminado = true; });
+    .finally(() => {
+      job.terminado = true;
+      // El TTL cuenta desde que terminó (antes contaba desde que empezó: una sync
+      // larga "vencía" en el medio y se podía arrancar otra en paralelo).
+      setTimeout(() => {
+        jobs.delete(jobId);
+        if (jobPorCliente.get(clienteId) === jobId) jobPorCliente.delete(clienteId);
+      }, JOB_TTL_MS).unref();
+    });
 
-  setTimeout(() => jobs.delete(jobId), JOB_TTL_MS);
   return jobId;
 }
 
@@ -474,17 +413,7 @@ function iniciarSyncPeriodica() {
 
 // Números para la tarjeta de Integraciones.
 async function resumen(clienteId) {
-  const pool = await getPool();
-  const r = await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .query(`
-      SELECT
-        (SELECT COUNT(*) FROM Articulos WHERE clienteId = @clienteId AND origen = 'shopify' AND activo = 1) AS articulosShopify,
-        (SELECT COUNT(*) FROM Articulos WHERE clienteId = @clienteId AND origen = 'manual' AND activo = 1) AS articulosManuales,
-        (SELECT COUNT(*) FROM Pedidos WHERE clienteId = @clienteId AND shopifyOrderId IS NOT NULL) AS pedidosEnviados,
-        (SELECT COUNT(*) FROM Pedidos WHERE clienteId = @clienteId AND shopifyEstado = 'error') AS pedidosConError
-    `);
+  const r = await ejecutar('dbo.usp_Portal_ShopifyResumen', { clienteId: [sql.Int, clienteId] });
   return r.recordset[0];
 }
 

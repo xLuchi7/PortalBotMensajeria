@@ -1,4 +1,4 @@
-const { getPool, sql } = require('./db');
+const { ejecutar, sql } = require('./db');
 const { cifrar, descifrar } = require('./cryptoService');
 
 // Credenciales de las apps de Shopify (Client ID / Client secret del Dev
@@ -31,8 +31,7 @@ function mapear(f) {
 
 async function listarApps() {
   if (cache && Date.now() - cache.t < CACHE_MS) return cache.apps;
-  const pool = await getPool();
-  const r = await pool.request().query('SELECT id, clienteId, clientId, clientSecretEnc, appUrl, fechaAlta FROM ShopifyApps');
+  const r = await ejecutar('dbo.usp_Portal_ShopifyAppsListar');
   const apps = r.recordset.map(mapear);
   cache = { t: Date.now(), apps };
   return apps;
@@ -53,21 +52,12 @@ async function obtenerAppDeCliente(clienteId) {
 // Reemplaza la app del alcance (Cliente o general) si ya existe: las tiendas
 // conectadas con las credenciales anteriores tendrán que reconectar.
 async function guardarApp({ clienteId, clientId, clientSecret, appUrl }) {
-  const pool = await getPool();
-  await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId ?? null)
-    .input('clientId', sql.NVarChar(100), clientId)
-    .input('secret', sql.NVarChar(1000), cifrar(clientSecret))
-    .input('appUrl', sql.NVarChar(255), appUrl)
-    .query(`
-      IF EXISTS (SELECT 1 FROM ShopifyApps WHERE (clienteId = @clienteId) OR (clienteId IS NULL AND @clienteId IS NULL))
-        UPDATE ShopifyApps SET clientId = @clientId, clientSecretEnc = @secret, appUrl = @appUrl
-        WHERE (clienteId = @clienteId) OR (clienteId IS NULL AND @clienteId IS NULL);
-      ELSE
-        INSERT INTO ShopifyApps (clienteId, clientId, clientSecretEnc, appUrl)
-        VALUES (@clienteId, @clientId, @secret, @appUrl);
-    `);
+  await ejecutar('dbo.usp_Portal_ShopifyAppGuardar', {
+    clienteId: [sql.Int, clienteId ?? null],
+    clientId: [sql.NVarChar(100), clientId],
+    secretEnc: [sql.NVarChar(1000), cifrar(clientSecret)],
+    appUrl: [sql.NVarChar(255), appUrl],
+  });
   cache = null;
 }
 

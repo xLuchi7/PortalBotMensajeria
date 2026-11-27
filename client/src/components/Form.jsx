@@ -18,6 +18,8 @@ export default function Form({ onSubmit, children, ...props }) {
       let campo = 'un Campo Obligatorio';
       const primero = label && label.childNodes[0];
       if (primero && primero.nodeType === Node.TEXT_NODE && primero.textContent.trim()) campo = primero.textContent.trim();
+      if (invalido.validity.tooShort) return toast('warning', `"${campo}" Tiene Que Tener Al Menos ${invalido.minLength} Caracteres`);
+      if (invalido.validity.typeMismatch) return toast('warning', `Revisá "${campo}"`);
       return toast('warning', `Falta Completar "${campo}"`);
     }
     onSubmit?.(e);

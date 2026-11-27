@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
 import BotSwitch from '../components/BotSwitch.jsx';
 import EstadoChat from '../components/EstadoChat.jsx';
+import AprendizajeForm from '../components/AprendizajeForm.jsx';
 import { Pagination, useTitulo } from '../components/ui.jsx';
 import { useAvisar } from '../components/Toasts.jsx';
 import { useConfirm } from '../components/Confirm.jsx';
@@ -143,6 +144,8 @@ export default function Chats({ modo = 'chats' }) {
               <Icon name="inbox" />
               <p>{!hayFiltro ? m.vacio : !filtros.q && !filtros.bot && filtros.estado === m.estadoDefault ? m.vacioDefault : 'No hay chats con ese filtro.'}</p>
               {hayFiltro && <button type="button" className="btn btn-outline btn-sm" onClick={() => cambiar({ q: '', estado: TODOS, bot: '', page: '' })}>Ver todos</button>}
+              {/* Si quedó en una página que ya no existe, el paginador vuelve solo a la última. */}
+              <Pagination page={datos.page} totalPages={datos.totalPages} compacto />
             </div>
           ) : (
             <>
@@ -225,8 +228,11 @@ function useTiempoReal({ clienteId, huella, lista, chat, filas, titulo }) {
   }, [filas]);
 
   // Cuando el servidor avisa (o al volver a la pestaña), confirma con la huella
-  // que de verdad cambió algo antes de recargar.
-  useEnVivo(['mensaje', 'chat', 'revision'], async () => {
+  // que de verdad cambió algo antes de recargar. Los avisos "chat" (alguien cambió
+  // el nombre, el estado o el bot de un chat desde el portal) no mueven la huella:
+  // esos recargan directo.
+  useEnVivo(['mensaje', 'chat', 'revision'], async (eventos) => {
+    if (eventos.some(e => e.tipo === 'chat')) { recargar.current(); return; }
     try {
       const r = await api(`/clientes/${clienteId}/chats/novedades`);
       if (huellaRef.current && r.huella !== huellaRef.current) {
@@ -475,6 +481,7 @@ function Conversacion({ clienteId, chat, botGeneralApagado, envioHabilitado, onC
   const { usuario } = useAuth();
   const avisar = useAvisar();
   const [guardandoBot, setGuardandoBot] = useState(false);
+  const [ensenar, setEnsenar] = useState(null);
   const base = `/clientes/${clienteId}/chats/${encodeURIComponent(chat.userId)}`;
 
   const cambiarBot = async (activo) => {
@@ -580,7 +587,9 @@ function Conversacion({ clienteId, chat, botGeneralApagado, envioHabilitado, onC
         </span>
       </div>
 
-      <Hilo mensajes={chat.mensajes} miEmail={usuario.email} />
+      <Hilo mensajes={chat.mensajes} miEmail={usuario.email}
+            onEnsenar={(pregunta, respuesta) => setEnsenar({ pregunta, respuesta, origenUserId: chat.userId })} />
+      <AprendizajeForm clienteId={clienteId} inicial={ensenar} onClose={() => setEnsenar(null)} />
 
       {!envioHabilitado ? (
         <div className="chat-composer-off">Para responder desde acá falta configurar BOT_URL y BOT_API_TOKEN en el portal.</div>
@@ -633,9 +642,19 @@ function NombreContacto({ base, chat, setChat, onCambio }) {
   );
 }
 
+// Lo que preguntó el cliente antes de la respuesta `i`: sus mensajes seguidos
+// más cercanos hacia atrás, para precargar "Enseñarle esto al bot".
+function preguntaAntes(mensajes, i) {
+  let j = i - 1;
+  while (j >= 0 && mensajes[j].role !== 'user') j--;
+  const partes = [];
+  while (j >= 0 && mensajes[j].role === 'user') partes.unshift(mensajes[j--].content);
+  return partes.join(' ').slice(0, 300);
+}
+
 // Conversación: arranca abajo de todo, como en WhatsApp. Si llega un mensaje y
 // estabas abajo, baja sola; si subiste a leer algo viejo, no te mueve.
-function Hilo({ mensajes, miEmail }) {
+function Hilo({ mensajes, miEmail, onEnsenar }) {
   const ref = useRef(null);
   const estabaAbajo = useRef(true);
   const [hayNuevosAbajo, setHayNuevosAbajo] = useState(false);
@@ -672,7 +691,7 @@ function Hilo({ mensajes, miEmail }) {
   return (
     <div className="chat-thread-wrap">
       <div className="chat-thread" ref={ref} onScroll={alScrollear}>
-        {mensajes.map(m => {
+        {mensajes.map((m, i) => {
           const separador = m.dia !== diaAnterior;
           diaAnterior = m.dia;
           const clase = m.role === 'user' ? 'burbuja-cliente' : m.enviadoPor ? 'burbuja-humano' : 'burbuja-bot';
@@ -685,7 +704,15 @@ function Hilo({ mensajes, miEmail }) {
                 )}
                 {m.role !== 'user' && !m.enviadoPor && <span className="burbuja-autor"><Icon name="bot" /> Bot</span>}
                 <div className="burbuja-texto">{m.content}</div>
-                <span className="burbuja-hora">{m.hora}</span>
+                <span className="burbuja-hora">
+                  {m.role !== 'user' && m.enviadoPor && onEnsenar && (
+                    <button type="button" className="burbuja-ensenar" title="Guardar esta respuesta para que el bot la use con otros clientes"
+                            onClick={() => onEnsenar(preguntaAntes(mensajes, i), String(m.content || '').slice(0, 1000))}>
+                      <Icon name="sparkles" /> Enseñarle esto al bot
+                    </button>
+                  )}
+                  {m.hora}
+                </span>
               </div>
             </Fragment>
           );

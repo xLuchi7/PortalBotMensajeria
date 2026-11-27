@@ -1,4 +1,4 @@
-const { getPool, sql } = require('./db');
+const { ejecutar, sql } = require('./db');
 const config = require('../config');
 const { cifrar, descifrar } = require('./cryptoService');
 const apps = require('./shopifyAppService');
@@ -12,14 +12,9 @@ const VENCIDO = 'El acceso a Shopify venció. Volvé a conectar la tienda.';
 
 // ── Conexiones ──────────────────────────────────────────────────────────────
 
-const COLUMNAS_PUBLICAS = 'clienteId, appId, shopDomain, nombreTienda, moneda, scopes, estado, ultimaSync, ultimoError, fechaAlta';
-
+// Datos públicos de la conexión (sin tokens), de usp_Portal_ShopifyConexionObtener.
 async function obtenerConexion(clienteId) {
-  const pool = await getPool();
-  const r = await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .query(`SELECT ${COLUMNAS_PUBLICAS} FROM ShopifyConexiones WHERE clienteId = @clienteId`);
+  const r = await ejecutar('dbo.usp_Portal_ShopifyConexionObtener', { clienteId: [sql.Int, clienteId] });
   return r.recordset[0] ?? null;
 }
 
@@ -31,17 +26,12 @@ async function obtenerConexionActiva(clienteId) {
 }
 
 async function obtenerConexionPorShop(shopDomain) {
-  const pool = await getPool();
-  const r = await pool
-    .request()
-    .input('shop', sql.NVarChar, shopDomain)
-    .query(`SELECT ${COLUMNAS_PUBLICAS} FROM ShopifyConexiones WHERE shopDomain = @shop`);
+  const r = await ejecutar('dbo.usp_Portal_ShopifyConexionObtener', { shopDomain: [sql.NVarChar(255), shopDomain] });
   return r.recordset[0] ?? null;
 }
 
 async function listarConexionesActivas() {
-  const pool = await getPool();
-  const r = await pool.request().query(`SELECT ${COLUMNAS_PUBLICAS} FROM ShopifyConexiones WHERE estado = 'activa'`);
+  const r = await ejecutar('dbo.usp_Portal_ShopifyConexionObtener', { soloActivas: [sql.Bit, 1] });
   return r.recordset;
 }
 
@@ -51,84 +41,52 @@ function vencimiento(segundos) {
 
 // appId solo al conectar; en un refresh se conserva el que ya tenía.
 async function guardarConexion(clienteId, { shopDomain, tokenData, appId = null }) {
-  const pool = await getPool();
-  await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .input('shop', sql.NVarChar, shopDomain)
-    .input('access', sql.NVarChar, cifrar(tokenData.access_token))
-    .input('expira', sql.DateTime2, vencimiento(tokenData.expires_in))
-    .input('refresh', sql.NVarChar, cifrar(tokenData.refresh_token ?? null))
-    .input('refreshExpira', sql.DateTime2, vencimiento(tokenData.refresh_token_expires_in))
-    .input('scopes', sql.NVarChar, tokenData.scope ?? null)
-    .input('appId', sql.Int, appId)
-    .query(`
-      MERGE ShopifyConexiones AS t
-      USING (SELECT @clienteId AS clienteId) AS s ON t.clienteId = s.clienteId
-      WHEN MATCHED THEN UPDATE SET
-        appId = COALESCE(@appId, t.appId), shopDomain = @shop, accessTokenEnc = @access, tokenExpira = @expira,
-        refreshTokenEnc = @refresh, refreshExpira = @refreshExpira, scopes = @scopes,
-        estado = 'activa', ultimoError = NULL
-      WHEN NOT MATCHED THEN INSERT
-        (clienteId, appId, shopDomain, accessTokenEnc, tokenExpira, refreshTokenEnc, refreshExpira, scopes, estado)
-        VALUES (@clienteId, @appId, @shop, @access, @expira, @refresh, @refreshExpira, @scopes, 'activa');
-    `);
+  await ejecutar('dbo.usp_Portal_ShopifyConexionGuardar', {
+    clienteId: [sql.Int, clienteId],
+    shopDomain: [sql.NVarChar(255), shopDomain],
+    accessEnc: [sql.NVarChar(1000), cifrar(tokenData.access_token)],
+    tokenExpira: [sql.DateTime2, vencimiento(tokenData.expires_in)],
+    refreshEnc: [sql.NVarChar(1000), cifrar(tokenData.refresh_token ?? null)],
+    refreshExpira: [sql.DateTime2, vencimiento(tokenData.refresh_token_expires_in)],
+    scopes: [sql.NVarChar(500), tokenData.scope ?? null],
+    appId: [sql.Int, appId],
+  });
+}
+
+// Cambios chicos de la conexión (usp_Portal_ShopifyConexionCambiar).
+function cambiarConexion(clienteId, accion, { estado = null, error = null, nombreTienda = null, moneda = null } = {}) {
+  return ejecutar('dbo.usp_Portal_ShopifyConexionCambiar', {
+    clienteId: [sql.Int, clienteId],
+    accion: [sql.VarChar(20), accion],
+    estado: [sql.NVarChar(20), estado],
+    error: [sql.NVarChar(1000), error ? String(error).slice(0, 1000) : null],
+    nombreTienda: [sql.NVarChar(255), nombreTienda],
+    moneda: [sql.NVarChar(10), moneda],
+  });
 }
 
 async function actualizarDatosTienda(clienteId, { nombreTienda, moneda }) {
-  const pool = await getPool();
-  await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .input('nombre', sql.NVarChar, nombreTienda)
-    .input('moneda', sql.NVarChar, moneda)
-    .query('UPDATE ShopifyConexiones SET nombreTienda = @nombre, moneda = @moneda WHERE clienteId = @clienteId');
+  await cambiarConexion(clienteId, 'datosTienda', { nombreTienda, moneda });
 }
 
 async function marcarEstado(clienteId, estado, ultimoError = null) {
-  const pool = await getPool();
-  await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .input('estado', sql.NVarChar, estado)
-    .input('error', sql.NVarChar(1000), ultimoError ? String(ultimoError).slice(0, 1000) : null)
-    .query('UPDATE ShopifyConexiones SET estado = @estado, ultimoError = @error WHERE clienteId = @clienteId');
+  await cambiarConexion(clienteId, 'estado', { estado, error: ultimoError });
 }
 
+// Si había quedado en error (ej. un bloqueo por IP ya resuelto), un sync que
+// anduvo la vuelve a activa: si no, la sync periódica la saltearía para siempre.
 async function marcarSync(clienteId) {
-  const pool = await getPool();
-  await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    // Si había quedado en error (ej. un bloqueo por IP ya resuelto), un sync que
-    // anduvo la vuelve a activa: si no, la sync periódica la saltearía para siempre.
-    .query(`
-      UPDATE ShopifyConexiones
-      SET ultimaSync = SYSUTCDATETIME(),
-          estado = CASE WHEN estado = 'error' THEN 'activa' ELSE estado END,
-          ultimoError = CASE WHEN estado = 'error' THEN NULL ELSE ultimoError END
-      WHERE clienteId = @clienteId
-    `);
+  await cambiarConexion(clienteId, 'sync');
 }
 
 // Al desinstalar/desconectar se borran los tokens: no queremos credenciales
 // muertas guardadas. La fila queda para mostrar el estado en el portal.
 async function borrarTokens(clienteId, estado) {
-  const pool = await getPool();
-  await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .input('estado', sql.NVarChar, estado)
-    .query(`
-      UPDATE ShopifyConexiones
-      SET accessTokenEnc = NULL, refreshTokenEnc = NULL, tokenExpira = NULL, refreshExpira = NULL, estado = @estado
-      WHERE clienteId = @clienteId
-    `);
+  await cambiarConexion(clienteId, 'borrarTokens', { estado });
 }
 
 async function eliminarConexion(clienteId) {
-  const pool = await getPool();
-  await pool.request().input('clienteId', sql.Int, clienteId).query('DELETE FROM ShopifyConexiones WHERE clienteId = @clienteId');
+  await cambiarConexion(clienteId, 'eliminar');
 }
 
 // ── Tokens ──────────────────────────────────────────────────────────────────
@@ -170,11 +128,7 @@ function canjearCodigo(app, shopDomain, code) {
 const refreshEnCurso = new Map();
 
 async function obtenerToken(clienteId) {
-  const pool = await getPool();
-  const r = await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .query('SELECT appId, shopDomain, accessTokenEnc, tokenExpira, refreshTokenEnc, estado FROM ShopifyConexiones WHERE clienteId = @clienteId');
+  const r = await ejecutar('dbo.usp_Portal_ShopifyConexionToken', { clienteId: [sql.Int, clienteId] });
   const fila = r.recordset[0];
   if (!fila || !fila.accessTokenEnc || fila.estado === 'desinstalada') {
     throw new ShopifyAuthError('La tienda de Shopify no está conectada.');

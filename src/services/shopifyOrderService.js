@@ -1,4 +1,4 @@
-const { getPool, sql } = require('./db');
+const { ejecutar, sql } = require('./db');
 const shopify = require('./shopifyClient');
 const avisos = require('./avisoService');
 
@@ -25,60 +25,34 @@ const MUTATION_CANCELAR = `
     }
   }`;
 
-async function guardarResultado(pedidoId, { estado, orderId = null, orderName = null, error = null }) {
-  const pool = await getPool();
-  await pool
-    .request()
-    .input('pedidoId', sql.Int, pedidoId)
-    .input('estado', sql.NVarChar, estado)
-    .input('orderId', sql.NVarChar, orderId)
-    .input('orderName', sql.NVarChar, orderName)
-    .input('error', sql.NVarChar(1000), error ? String(error).slice(0, 1000) : null)
-    .query(`
-      UPDATE Pedidos SET
-        shopifyEstado = @estado,
-        shopifyOrderId = COALESCE(@orderId, shopifyOrderId),
-        shopifyOrderName = COALESCE(@orderName, shopifyOrderName),
-        shopifyError = @error
-      WHERE id = @pedidoId
-    `);
+async function guardarResultado(pedidoId, clienteId, { estado, orderId = null, orderName = null, error = null }) {
+  await ejecutar('dbo.usp_Portal_ShopifyPedidoResultado', {
+    pedidoId: [sql.Int, pedidoId],
+    clienteId: [sql.Int, clienteId],
+    estado: [sql.NVarChar(20), estado],
+    orderId: [sql.NVarChar(100), orderId],
+    orderName: [sql.NVarChar(50), orderName],
+    error: [sql.NVarChar(1000), error ? String(error).slice(0, 1000) : null],
+  });
 }
 
 // Reserva atómica: solo un request puede pasar el Pedido a "enviando". Evita
 // crear dos órdenes en Shopify por un doble click o dos pestañas abiertas.
 async function reservarEnvio(pedidoId, clienteId, { reintento }) {
-  const pool = await getPool();
-  const r = await pool
-    .request()
-    .input('pedidoId', sql.Int, pedidoId)
-    .input('clienteId', sql.Int, clienteId)
-    .input('reintento', sql.Bit, reintento ? 1 : 0)
-    .query(`
-      UPDATE Pedidos SET shopifyEstado = 'enviando', shopifyError = NULL
-      WHERE id = @pedidoId AND clienteId = @clienteId AND shopifyOrderId IS NULL
-        AND (shopifyEstado IS NULL OR shopifyEstado = 'error' OR (@reintento = 1 AND shopifyEstado = 'enviando'))
-    `);
-  return r.rowsAffected[0] > 0;
+  const r = await ejecutar('dbo.usp_Portal_ShopifyPedidoReservar', {
+    pedidoId: [sql.Int, pedidoId],
+    clienteId: [sql.Int, clienteId],
+    reintento: [sql.Bit, reintento ? 1 : 0],
+  });
+  return Boolean(r.recordset[0]?.reservado);
 }
 
 async function leerPedido(pedidoId, clienteId) {
-  const pool = await getPool();
-  const [pedido, items] = await Promise.all([
-    pool
-      .request()
-      .input('pedidoId', sql.Int, pedidoId)
-      .input('clienteId', sql.Int, clienteId)
-      .query('SELECT id, userId, estado, notas, shopifyOrderId, shopifyEstado FROM Pedidos WHERE id = @pedidoId AND clienteId = @clienteId'),
-    pool
-      .request()
-      .input('pedidoId', sql.Int, pedidoId)
-      .query(`
-        SELECT d.cantidad, d.precioUnitario, a.nombre, a.shopifyVariantId
-        FROM DetallePedidos d JOIN Articulos a ON a.id = d.articuloId
-        WHERE d.pedidoId = @pedidoId
-      `),
-  ]);
-  return { pedido: pedido.recordset[0] ?? null, items: items.recordset };
+  const r = await ejecutar('dbo.usp_Portal_ShopifyPedidoLeer', {
+    pedidoId: [sql.Int, pedidoId],
+    clienteId: [sql.Int, clienteId],
+  });
+  return { pedido: r.recordsets[0][0] ?? null, items: r.recordsets[1] };
 }
 
 function telefonoE164(userId) {
@@ -141,7 +115,7 @@ async function enviarPedido(pedidoId, clienteId, { reintento = false } = {}) {
     const error = items.length
       ? `Estos artículos no están vinculados a Shopify: ${sinVincular.join(', ')}.`
       : 'El pedido no tiene artículos.';
-    await guardarResultado(pedidoId, { estado: 'error', error });
+    await guardarResultado(pedidoId, clienteId, { estado: 'error', error });
     return { error };
   }
 
@@ -156,11 +130,12 @@ async function enviarPedido(pedidoId, clienteId, { reintento = false } = {}) {
 
     if (!resultado.order) {
       const error = resultado.userErrors.map(e => e.message).join(' | ') || 'Shopify no creó el pedido.';
-      await guardarResultado(pedidoId, { estado: 'error', error });
+      await guardarResultado(pedidoId, clienteId, { estado: 'error', error });
       return { error };
     }
 
-    await guardarResultado(pedidoId, { estado: 'enviado', orderId: resultado.order.id, orderName: resultado.order.name });
+    await guardarResultado(pedidoId, clienteId, { estado: 'enviado', orderId: resultado.order.id, orderName: resultado.order.name });
+    await cancelarSiSeCanceloMientrasTanto(pedidoId, clienteId);
     return { enviado: true, orderName: resultado.order.name };
   } catch (err) {
     // Errores de acceso a datos protegidos llegan como error GraphQL, no userError.
@@ -168,14 +143,29 @@ async function enviarPedido(pedidoId, clienteId, { reintento = false } = {}) {
       try {
         const r2 = await crearOrden(clienteId, armarOrden(pedido, items, conexion.moneda, { conTelefono: false }));
         if (r2.order) {
-          await guardarResultado(pedidoId, { estado: 'enviado', orderId: r2.order.id, orderName: r2.order.name });
+          await guardarResultado(pedidoId, clienteId, { estado: 'enviado', orderId: r2.order.id, orderName: r2.order.name });
+          await cancelarSiSeCanceloMientrasTanto(pedidoId, clienteId);
           return { enviado: true, orderName: r2.order.name };
         }
       } catch { /* cae al error de abajo */ }
     }
     console.error(`[shopify] No se pudo crear el pedido ${pedidoId}:`, err.message);
-    await guardarResultado(pedidoId, { estado: 'error', error: err.message });
+    await guardarResultado(pedidoId, clienteId, { estado: 'error', error: err.message });
     return { error: err.message };
+  }
+}
+
+// Si lo cancelaron en el portal mientras se creaba en Shopify, cancelarPedido no
+// tenía todavía el orderId y no hizo nada: ahora que existe, se cancela allá también.
+async function cancelarSiSeCanceloMientrasTanto(pedidoId, clienteId) {
+  try {
+    const { pedido } = await leerPedido(pedidoId, clienteId);
+    if (pedido?.estado === 'cancelado') {
+      console.log(`[shopify] Pedido ${pedidoId} cancelado mientras se enviaba: se cancela también en Shopify.`);
+      await cancelarPedido(pedidoId, clienteId);
+    }
+  } catch (err) {
+    console.error(`[shopify] No se pudo revisar si el pedido ${pedidoId} se canceló mientras se enviaba:`, err.message);
   }
 }
 
@@ -195,14 +185,14 @@ async function cancelarPedido(pedidoId, clienteId) {
     const errores = data.orderCancel.orderCancelUserErrors;
     if (errores.length) {
       const error = errores.map(e => e.message).join(' | ');
-      await guardarResultado(pedidoId, { estado: 'enviado', error: `No se pudo cancelar en Shopify: ${error}` });
+      await guardarResultado(pedidoId, clienteId, { estado: 'enviado', error: `No se pudo cancelar en Shopify: ${error}` });
       return { error };
     }
-    await guardarResultado(pedidoId, { estado: 'cancelado' });
+    await guardarResultado(pedidoId, clienteId, { estado: 'cancelado' });
     return { cancelado: true };
   } catch (err) {
     console.error(`[shopify] No se pudo cancelar el pedido ${pedidoId}:`, err.message);
-    await guardarResultado(pedidoId, { estado: 'enviado', error: `No se pudo cancelar en Shopify: ${err.message}` });
+    await guardarResultado(pedidoId, clienteId, { estado: 'enviado', error: `No se pudo cancelar en Shopify: ${err.message}` });
     return { error: err.message };
   }
 }
@@ -262,18 +252,30 @@ function textoEnvio(nombre, envio, t) {
  * es "salió la mercadería"); si lo cancelan allá, se cancela acá. Además manda
  * los avisos por WhatsApp que el Cliente tenga activados.
  */
-async function actualizarDesdeShopify(clienteId, payload) {
-  const pool = await getPool();
-  const orderId = shopify.gid('Order', payload.id);
+// Shopify no garantiza el orden de los webhooks: un orders/updated viejo ("pendiente
+// de pago") puede llegar después de uno nuevo ("pagado"). Se recuerda el updated_at
+// del último procesado por orden y se ignoran los anteriores.
+const ultimoUpdatedAt = new Map(); // orderId -> ms
+function esViejo(orderId, updatedAt) {
+  const t = Date.parse(updatedAt);
+  if (!Number.isFinite(t)) return false;
+  if (t < (ultimoUpdatedAt.get(orderId) ?? 0)) return true;
+  ultimoUpdatedAt.set(orderId, t);
+  if (ultimoUpdatedAt.size > 10000) ultimoUpdatedAt.delete(ultimoUpdatedAt.keys().next().value);
+  return false;
+}
 
-  const r = await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .input('orderId', sql.NVarChar, orderId)
-    .query(`
-      SELECT id, userId, estado, shopifyPago, shopifyEnvio, shopifyOrderName
-      FROM Pedidos WHERE clienteId = @clienteId AND shopifyOrderId = @orderId
-    `);
+async function actualizarDesdeShopify(clienteId, payload) {
+  const orderId = shopify.gid('Order', payload.id);
+  if (esViejo(orderId, payload.updated_at)) {
+    console.log(`[shopify] Webhook viejo de ${orderId} ignorado (llegó después de uno más nuevo).`);
+    return { omitido: true };
+  }
+
+  const r = await ejecutar('dbo.usp_Portal_ShopifyPedidoPorOrden', {
+    clienteId: [sql.Int, clienteId],
+    orderId: [sql.NVarChar(100), orderId],
+  });
   const p = r.recordset[0];
   if (!p) return { omitido: true }; // pedido que no salió del portal (ej. de la tienda web)
 
@@ -289,31 +291,18 @@ async function actualizarDesdeShopify(clienteId, payload) {
     else if (envio === 'despachado' || envio === 'entregado') nuevoEstado = 'entregado';
   }
 
-  await pool
-    .request()
-    .input('id', sql.Int, p.id)
-    .input('clienteId', sql.Int, clienteId)
-    .input('pago', sql.NVarChar(20), pago)
-    .input('envio', sql.NVarChar(20), envio)
-    .input('numero', sql.NVarChar(100), t.numero)
-    .input('url', sql.NVarChar(500), t.url)
-    .input('empresa', sql.NVarChar(100), t.empresa)
-    .input('estado', sql.NVarChar, nuevoEstado)
-    .input('cancelado', sql.Bit, cancelado ? 1 : 0)
-    .input('nombre', sql.NVarChar, payload.name || null)
-    .query(`
-      UPDATE Pedidos SET
-        shopifyPago = @pago,
-        shopifyEnvio = @envio,
-        trackingNumero = COALESCE(@numero, trackingNumero),
-        trackingUrl = COALESCE(@url, trackingUrl),
-        trackingEmpresa = COALESCE(@empresa, trackingEmpresa),
-        shopifyActualizado = SYSUTCDATETIME(),
-        shopifyOrderName = COALESCE(shopifyOrderName, @nombre),
-        estado = COALESCE(@estado, estado),
-        shopifyEstado = CASE WHEN @cancelado = 1 THEN 'cancelado' ELSE shopifyEstado END
-      WHERE id = @id AND clienteId = @clienteId
-    `);
+  await ejecutar('dbo.usp_Portal_ShopifyPedidoActualizar', {
+    id: [sql.Int, p.id],
+    clienteId: [sql.Int, clienteId],
+    pago: [sql.NVarChar(20), pago],
+    envio: [sql.NVarChar(20), envio],
+    trackingNumero: [sql.NVarChar(100), t.numero],
+    trackingUrl: [sql.NVarChar(500), t.url],
+    trackingEmpresa: [sql.NVarChar(100), t.empresa],
+    estado: [sql.NVarChar(20), nuevoEstado],
+    cancelado: [sql.Bit, cancelado ? 1 : 0],
+    orderName: [sql.NVarChar(50), payload.name || null],
+  });
 
   if (nuevoEstado) console.log(`[shopify] Pedido ${p.id} (cliente ${clienteId}) pasó a ${nuevoEstado} desde Shopify.`);
   if (cancelado) return { actualizado: true };

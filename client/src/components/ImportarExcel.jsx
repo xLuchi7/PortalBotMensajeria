@@ -19,24 +19,38 @@ export default function ImportarExcel({ clienteId, open, onClose }) {
     return () => clearTimeout(timer.current);
   }, [open]);
 
-  const poll = async (id) => {
+  const montado = useRef(true);
+  useEffect(() => () => { montado.current = false; }, []);
+
+  // Un corte de red no da por perdida la importación (sigue en el servidor): se
+  // reintenta hasta 3 veces. Un 404 (job vencido) corta de una.
+  const poll = async (id, fallos = 0) => {
     try {
       const e = await api(`/clientes/${clienteId}/importar/${id}`);
+      if (!montado.current) return;
       setEstado(e);
       if (!e.terminado) timer.current = setTimeout(() => poll(id), 700);
       else setPaso('resultado');
     } catch (err) {
+      if (!montado.current) return;
+      if (err.status !== 404 && fallos < 3) {
+        timer.current = setTimeout(() => poll(id, fallos + 1), 2000 * (fallos + 1));
+        return;
+      }
       setEstado({ terminado: true, errorFatal: err.message });
       setPaso('resultado');
     }
   };
 
+  const [subiendo, setSubiendo] = useState(false);
   const subir = async (e) => {
     e.preventDefault();
+    if (subiendo) return;
     if (!archivo) return setError('Elegí un archivo .xlsx para subir.');
     setError(null);
     const fd = new FormData();
     fd.append('archivo', archivo);
+    setSubiendo(true);
     try {
       const r = await api(`/clientes/${clienteId}/importar`, { method: 'POST', body: fd });
       setJobId(r.jobId);
@@ -46,6 +60,7 @@ export default function ImportarExcel({ clienteId, open, onClose }) {
     } catch (err) {
       setError(err.status === 0 ? 'No se pudo conectar con el servidor.' : err.message);
     }
+    setSubiendo(false);
   };
 
   const elegir = (f) => {
@@ -91,7 +106,7 @@ export default function ImportarExcel({ clienteId, open, onClose }) {
             {error && <p className="alert alert-error" style={{ marginTop: '1rem' }}>{error}</p>}
             <div className="modal-actions" style={{ marginTop: '1.1rem' }}>
               <button type="button" className="btn btn-outline" onClick={cerrar}>Cancelar</button>
-              <button type="submit" className="btn btn-primary" disabled={!archivo}>Subir</button>
+              <button type="submit" className="btn btn-primary" disabled={!archivo || subiendo}>{subiendo ? 'Subiendo…' : 'Subir'}</button>
             </div>
           </form>
         </>

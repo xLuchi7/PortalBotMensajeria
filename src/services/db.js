@@ -15,6 +15,11 @@ function getPool() {
         encrypt: true, // requerido por Azure SQL
         trustServerCertificate: false,
       },
+    }).then((pool) => {
+      // Sin un listener de 'error', un error del pool (failover de Azure SQL, la base
+      // despertando) es un evento sin manejar y tira abajo todo el proceso.
+      pool.on('error', err => console.error('[db] Error de la conexión a SQL:', err.message));
+      return pool;
     }).catch(err => {
       // Si la conexión falla (timeout, firewall, la base despertando), no se
       // guarda el error: el próximo pedido vuelve a intentar conectar.

@@ -27,6 +27,7 @@ const GRUPOS = [
   ] },
   { titulo: 'Configuración', items: [
     { ruta: 'negocio', label: 'Mi Negocio', icono: 'fileText' },
+    { ruta: 'aprendizajes', label: 'Aprendizajes', icono: 'sparkles' },
     { ruta: 'integraciones', label: 'Integraciones', icono: 'plug' },
   ] },
 ];
@@ -53,17 +54,23 @@ function useContadores(clienteId, pathname, fuente) {
   const [contadores, setContadores] = useState(null);
   const actual = useRef(clienteId);
   actual.current = clienteId;
+  // Si salen dos pedidos seguidos, solo vale la respuesta del último (una más
+  // vieja que llega tarde no pisa los números nuevos).
+  const secuencia = useRef(0);
   const pedir = useCallback(async () => {
     if (!clienteId) return;
+    const mio = ++secuencia.current;
     try {
       const c = await api(`/clientes/${clienteId}/contadores`);
-      if (actual.current === clienteId) setContadores(c);
+      if (actual.current === clienteId && mio === secuencia.current) setContadores({ ...c, clienteId });
     } catch { /* sin red: se reintenta con el próximo aviso */ }
   }, [clienteId]);
   useEffect(() => {
     if (!clienteId) { setContadores(null); return; }
     pedir();
   }, [clienteId, pathname, pedir]);
+  // Al cambiar de Cliente (admin), los números del anterior no se muestran.
+  useEffect(() => { setContadores(null); }, [clienteId]);
   useEnVivo(TIPOS_EVENTO, pedir, { fuente });
   return contadores;
 }
@@ -77,10 +84,16 @@ function useAvisoRevision(contadores) {
   const n = contadores?.revision || 0;
   useEffect(() => {
     if (contadores == null) return;
-    if (anterior.current != null && n > anterior.current) {
-      toast('warning', n - anterior.current === 1 ? 'Un Chat Pidió Hablar Con Una Persona' : `${n - anterior.current} Chats Pidieron Hablar Con Una Persona`);
+    // Cambió el Cliente que se está viendo: no es "un chat nuevo", es otro negocio.
+    if (anterior.current?.clienteId !== contadores.clienteId) {
+      anterior.current = { clienteId: contadores.clienteId, n };
+      return;
     }
-    anterior.current = n;
+    if (n > anterior.current.n) {
+      const nuevos = n - anterior.current.n;
+      toast('warning', nuevos === 1 ? 'Un Chat Pidió Hablar Con Una Persona' : `${nuevos} Chats Pidieron Hablar Con Una Persona`);
+    }
+    anterior.current.n = n;
   }, [contadores, n, toast]);
   useEffect(() => {
     const limpio = document.title.replace(/^\(\d+\) ⚠ /, '');

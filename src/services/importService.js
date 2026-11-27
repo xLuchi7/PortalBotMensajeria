@@ -1,15 +1,30 @@
 const crypto = require('crypto');
 const ExcelJS = require('exceljs');
-const { getPool, sql } = require('./db');
+const articulos = require('./articuloService');
 
 const COLUMNAS_ESPERADAS = ['Nombre', 'Codigo', 'Descripcion', 'Precio', 'Usa Control de Stock', 'Stock'];
 const JOB_TTL_MS = 20 * 60 * 1000;
+const MAX_FILAS = 5000;
 
 // Jobs en memoria: alcanza porque son de corta duración (minutos) y este proceso
 // es la única instancia del Portal. Si Railway redeploya en medio de una
 // importación, el cliente ve el progreso cortarse -- aceptable, es una acción en
 // primer plano que el usuario está mirando, no un proceso de fondo desatendido.
 const jobs = new Map();
+const jobPorCliente = new Map(); // una importación a la vez por Cliente
+
+// ExcelJS devuelve objetos para celdas con formato enriquecido, fórmulas,
+// hipervínculos o errores (antes terminaban como "[object Object]").
+function valorCelda(v) {
+  if (v == null) return v;
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (typeof v !== 'object') return v;
+  if (Array.isArray(v.richText)) return v.richText.map(r => r.text ?? '').join('');
+  if ('result' in v) return valorCelda(v.result); // fórmula: se usa el valor calculado
+  if ('text' in v) return valorCelda(v.text); // hipervínculo
+  if ('error' in v) return null;
+  return String(v);
+}
 
 // Lee el archivo subido y devuelve las filas crudas (sin validar todavía). Tira si
 // el encabezado no coincide con el modelo -- eso rechaza el archivo entero antes de
@@ -20,7 +35,11 @@ async function leerFilas(buffer) {
   const ws = wb.worksheets[0];
   if (!ws) throw new Error('El archivo no tiene ninguna hoja.');
 
-  const headerRow = ws.getRow(1).values.slice(1).map(v => (v ?? '').toString().trim());
+  if (ws.actualRowCount - 1 > MAX_FILAS) {
+    throw new Error(`El archivo tiene demasiadas filas (máximo ${MAX_FILAS}). Dividilo en varios archivos.`);
+  }
+
+  const headerRow = ws.getRow(1).values.slice(1).map(v => (valorCelda(v) ?? '').toString().trim());
   const headerOk = COLUMNAS_ESPERADAS.every((col, i) => headerRow[i] === col);
   if (!headerOk) {
     throw new Error(`El archivo no respeta el formato del modelo. Se esperaban las columnas: ${COLUMNAS_ESPERADAS.join(', ')}.`);
@@ -29,7 +48,7 @@ async function leerFilas(buffer) {
   const filas = [];
   ws.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
-    const values = row.values.slice(1);
+    const values = row.values.slice(1).map(valorCelda);
     if (values.every(v => v === null || v === undefined || v === '')) return;
     filas.push({
       nombre: values[0],
@@ -47,14 +66,16 @@ async function leerFilas(buffer) {
 function validarFila(fila) {
   const nombre = (fila.nombre ?? '').toString().trim();
   if (!nombre) return { error: 'Falta el Nombre.' };
+  if (nombre.length > 200) return { error: 'El Nombre tiene más de 200 caracteres.' };
 
   const codigo = fila.codigo != null && fila.codigo !== '' ? fila.codigo.toString().trim() : null;
+  if (codigo && codigo.length > 50) return { error: 'El Código tiene más de 50 caracteres.' };
   const descripcion = fila.descripcion != null && fila.descripcion !== '' ? fila.descripcion.toString().trim() : null;
 
   let precio = null;
   if (fila.precio !== null && fila.precio !== undefined && fila.precio !== '') {
     precio = Number(fila.precio);
-    if (Number.isNaN(precio) || precio < 0) return { error: 'El Precio no es un número válido.' };
+    if (!Number.isFinite(precio) || precio < 0 || precio > 999999999) return { error: 'El Precio no es un número válido.' };
   }
 
   const usaStockTexto = (fila.usaStockTexto ?? '').toString().trim().toLowerCase();
@@ -66,7 +87,7 @@ function validarFila(fila) {
   let stock = 0;
   if (fila.stock !== null && fila.stock !== undefined && fila.stock !== '') {
     stock = Number(fila.stock);
-    if (!Number.isInteger(stock) || stock < 0) return { error: 'El Stock debe ser un número entero mayor o igual a 0.' };
+    if (!Number.isInteger(stock) || stock < 0 || stock > 2147483647) return { error: 'El Stock debe ser un número entero mayor o igual a 0.' };
   }
 
   return { ok: true, datos: { nombre, codigo, descripcion, precio, usaStock, stock } };
@@ -74,82 +95,12 @@ function validarFila(fila) {
 
 // Match por Código si la fila lo trae; si no, por Nombre. No toca "activo" -- si el
 // Artículo estaba desactivado, la importación no lo reactiva solo.
-async function buscarExistente(pool, clienteId, nombre, codigo) {
-  if (codigo) {
-    const r = await pool
-      .request()
-      .input('clienteId', sql.Int, clienteId)
-      .input('codigo', sql.NVarChar, codigo)
-      .query('SELECT id FROM Articulos WHERE clienteId = @clienteId AND codigo = @codigo');
-    return r.recordset[0] ?? null;
-  }
-  const r = await pool
-    .request()
-    .input('clienteId', sql.Int, clienteId)
-    .input('nombre', sql.NVarChar, nombre)
-    .query('SELECT id FROM Articulos WHERE clienteId = @clienteId AND nombre = @nombre');
-  return r.recordset[0] ?? null;
-}
-
 // El Stock siempre se pisa con lo que diga el Excel, tanto al crear como al
 // actualizar -- decisión explícita: la importación es la fuente de verdad del stock.
-async function upsertArticulo(pool, clienteId, { nombre, codigo, descripcion, precio, usaStock, stock }) {
-  const existente = await buscarExistente(pool, clienteId, nombre, codigo);
-
-  if (existente) {
-    await pool
-      .request()
-      .input('id', sql.Int, existente.id)
-      .input('clienteId', sql.Int, clienteId)
-      .input('codigo', sql.NVarChar, codigo)
-      .input('nombre', sql.NVarChar, nombre)
-      .input('descripcion', sql.NVarChar, descripcion)
-      .input('precio', sql.Decimal(12, 2), precio)
-      .input('usaStock', sql.Bit, usaStock ? 1 : 0)
-      .query(`
-        UPDATE Articulos
-        SET codigo = @codigo, nombre = @nombre, descripcion = @descripcion, precio = @precio, usaStock = @usaStock
-        WHERE id = @id AND clienteId = @clienteId
-      `);
-    await pool
-      .request()
-      .input('articuloId', sql.Int, existente.id)
-      .input('cantidad', sql.Int, stock)
-      .query('UPDATE Stock SET cantidad = @cantidad, actualizado = SYSUTCDATETIME() WHERE articuloId = @articuloId');
-    return;
-  }
-
-  const transaction = new sql.Transaction(pool);
-  await transaction.begin();
-  try {
-    const result = await new sql.Request(transaction)
-      .input('clienteId', sql.Int, clienteId)
-      .input('codigo', sql.NVarChar, codigo)
-      .input('nombre', sql.NVarChar, nombre)
-      .input('descripcion', sql.NVarChar, descripcion)
-      .input('precio', sql.Decimal(12, 2), precio)
-      .input('usaStock', sql.Bit, usaStock ? 1 : 0)
-      .query(`
-        INSERT INTO Articulos (clienteId, codigo, nombre, descripcion, precio, usaStock)
-        OUTPUT INSERTED.id
-        VALUES (@clienteId, @codigo, @nombre, @descripcion, @precio, @usaStock)
-      `);
-    const articuloId = result.recordset[0].id;
-    await new sql.Request(transaction)
-      .input('articuloId', sql.Int, articuloId)
-      .input('cantidad', sql.Int, stock)
-      .query('INSERT INTO Stock (articuloId, cantidad) VALUES (@articuloId, @cantidad)');
-    await transaction.commit();
-  } catch (err) {
-    await transaction.rollback();
-    throw err;
-  }
-}
+// Todo en usp_Portal_ArticuloGuardar (@importar = 1), en una transacción.
 
 async function procesarImportacion(jobId, filas) {
   const job = jobs.get(jobId);
-  const pool = await getPool();
-
   for (let i = 0; i < filas.length; i++) {
     const filaCruda = filas[i];
     const numeroFila = i + 2; // fila 1 es el encabezado
@@ -162,10 +113,11 @@ async function procesarImportacion(jobId, filas) {
     }
 
     try {
-      await upsertArticulo(pool, job.clienteId, validacion.datos);
+      await articulos.importarArticulo(job.clienteId, validacion.datos);
       job.exitosos++;
     } catch (err) {
-      job.errores.push({ fila: numeroFila, datos: filaCruda, error: err.message });
+      console.error(`[importar] Fila ${numeroFila} (cliente ${job.clienteId}):`, err.message);
+      job.errores.push({ fila: numeroFila, datos: filaCruda, error: 'No se pudo guardar esta fila.' });
     }
     job.procesado++;
   }
@@ -173,8 +125,16 @@ async function procesarImportacion(jobId, filas) {
   job.terminado = true;
 }
 
+// null si ya hay una importación corriendo para este Cliente.
+function enCurso(clienteId) {
+  const jobId = jobPorCliente.get(clienteId);
+  return jobId && jobs.has(jobId) && !jobs.get(jobId).terminado ? jobId : null;
+}
+
 function crearJob(clienteId, filas) {
+  if (enCurso(clienteId)) return null;
   const jobId = crypto.randomUUID();
+  jobPorCliente.set(clienteId, jobId);
   jobs.set(jobId, {
     clienteId,
     total: filas.length,
@@ -184,15 +144,22 @@ function crearJob(clienteId, filas) {
     terminado: false,
   });
 
-  procesarImportacion(jobId, filas).catch(err => {
-    const job = jobs.get(jobId);
-    if (job) {
-      job.terminado = true;
-      job.errorFatal = err.message;
-    }
-  });
+  procesarImportacion(jobId, filas)
+    .catch((err) => {
+      console.error(`[importar] Falló la importación (cliente ${clienteId}):`, err.message);
+      const job = jobs.get(jobId);
+      if (job) job.errorFatal = 'No se pudo terminar la importación. Probá de nuevo.';
+    })
+    .finally(() => {
+      const job = jobs.get(jobId);
+      if (job) job.terminado = true;
+      // El TTL cuenta desde que terminó, no desde que empezó.
+      setTimeout(() => {
+        jobs.delete(jobId);
+        if (jobPorCliente.get(clienteId) === jobId) jobPorCliente.delete(clienteId);
+      }, JOB_TTL_MS).unref();
+    });
 
-  setTimeout(() => jobs.delete(jobId), JOB_TTL_MS);
   return jobId;
 }
 
@@ -275,4 +242,4 @@ async function generarExcelErrores(jobId, clienteId) {
   return wb.xlsx.writeBuffer();
 }
 
-module.exports = { leerFilas, crearJob, obtenerEstado, generarExcelErrores };
+module.exports = { leerFilas, crearJob, enCurso, obtenerEstado, generarExcelErrores };

@@ -98,8 +98,8 @@ a:hover { color: var(--primary-dark); }
 .brand-text strong { color: #fff; font-size: 0.95rem; font-weight: 700; letter-spacing: -0.01em; }
 .brand-text small { font-size: 0.72rem; color: #6c7194; }
 
-/* Tarjeta del negocio: iniciales, nombre y estado del asistente. Si el bot
-   está apagado se tiñe de rojo porque es algo que hay que resolver. */
+/* Tarjeta del negocio: iniciales y nombre (hasta 2 líneas). El estado del
+   asistente va en el widget de abajo del menú. */
 .sidebar-negocio {
   display: flex;
   align-items: center;
@@ -110,7 +110,6 @@ a:hover { color: var(--primary-dark); }
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 .sidebar-negocio:hover { border-color: rgba(255, 255, 255, 0.13); background-color: rgba(255, 255, 255, 0.03); }
-.sidebar-negocio.is-off { background: linear-gradient(135deg, rgba(239, 68, 68, 0.18), rgba(239, 68, 68, 0.06)); border-color: rgba(248, 113, 113, 0.32); }
 .sidebar-negocio-link {
   position: relative;
   flex: 1;
@@ -118,47 +117,52 @@ a:hover { color: var(--primary-dark); }
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  padding: 0.65rem 0.7rem;
+  padding: 0.7rem 0.75rem;
   color: #fff;
 }
 .sidebar-negocio-link:hover { color: #fff; }
 .sidebar-negocio-avatar {
   position: relative;
-  width: 36px;
-  height: 36px;
-  border-radius: 11px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.02em;
   color: #fff;
   background: linear-gradient(140deg, #d8b4fe, #8b5cf6 55%, #6d28d9);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 4px 12px rgba(139, 92, 246, 0.35);
 }
-.sidebar-negocio-dot {
-  position: absolute;
-  right: -3px;
-  bottom: -3px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2.5px solid #15172f;
-  background: #4ade80;
-  animation: dot-live 2.4s ease-out infinite;
+.sidebar-negocio-texto { min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+.sidebar-negocio-texto small {
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #6c7194;
 }
-.sidebar-negocio.is-off .sidebar-negocio-dot { background: #f87171; animation-name: dot-off; }
-.sidebar-negocio-texto { min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
-.sidebar-negocio-texto strong { font-size: 0.87rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sidebar-negocio-texto small { font-size: 0.72rem; color: #86efac; }
-.sidebar-negocio.is-off .sidebar-negocio-texto small { color: #fca5a5; font-weight: 600; }
+.sidebar-negocio-texto strong {
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
 .sidebar-negocio-salir {
   flex-shrink: 0;
+  align-self: flex-start;
   width: 26px;
   height: 26px;
-  margin-right: 0.45rem;
+  margin: 0.45rem 0.45rem 0 0;
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -168,8 +172,126 @@ a:hover { color: var(--primary-dark); }
 .sidebar-negocio-salir .icon { width: 14px; height: 14px; }
 .sidebar-negocio-salir:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
 
+/* ── Widget del bot ── */
+/* Tarjeta al pie del menú con el estado del asistente y un interruptor.
+   Va debajo de la tarjeta del negocio. Verde con brillo cuando responde; rojo cuando está apagado (hay que resolverlo). */
+.widget-bot {
+  --wb: 74, 222, 128;
+  position: relative;
+  isolation: isolate;
+  margin: 0.55rem 0 0.3rem;
+  padding: 0.85rem;
+  border-radius: 16px;
+  border: 1px solid rgba(var(--wb), 0.22);
+  background:
+    radial-gradient(140px 90px at 0% 0%, rgba(var(--wb), 0.16), transparent 75%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 30px -12px rgba(var(--wb), 0.35);
+  overflow: hidden;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+}
+.widget-bot.is-off { --wb: 248, 113, 113; }
+.widget-bot.is-cargando { --wb: 169, 173, 200; }
+
+.widget-bot-cabeza { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.75rem; }
+.widget-bot-icono {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: linear-gradient(140deg, #8476ff, #5b4cf0 60%, #4434c9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 4px 14px rgba(91, 76, 240, 0.4);
+}
+.widget-bot-icono .icon { width: 20px; height: 20px; }
+/* Anillo que "respira" alrededor del ícono mientras responde. */
+.widget-bot.is-on .widget-bot-icono::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 15px;
+  border: 1.5px solid rgba(var(--wb), 0.55);
+  animation: widget-bot-anillo 2.6s ease-out infinite;
+}
+.widget-bot.is-off .widget-bot-icono { background: linear-gradient(140deg, #4b4f72, #33365a); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1); color: #a9adc8; }
+
+.widget-bot-texto { min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.widget-bot-texto strong { color: #fff; font-size: 0.88rem; font-weight: 650; letter-spacing: -0.01em; }
+.widget-bot-texto small {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: rgb(var(--wb));
+}
+.widget-bot-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgb(var(--wb));
+  box-shadow: 0 0 0 0 rgba(var(--wb), 0.6);
+}
+.widget-bot.is-on .widget-bot-dot { animation: dot-live 2.4s ease-out infinite; }
+.widget-bot.is-off .widget-bot-dot { animation: dot-off 2.4s ease-out infinite; }
+
+.widget-bot-boton {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.55rem 0.5rem 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(8, 10, 28, 0.45);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #d5d8ee;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+.widget-bot-boton:hover:not(:disabled) { background: rgba(8, 10, 28, 0.7); border-color: rgba(var(--wb), 0.35); color: #fff; }
+.widget-bot-boton:active:not(:disabled) { transform: scale(0.98); }
+.widget-bot-boton:focus-visible { outline: 2px solid rgba(var(--wb), 0.7); outline-offset: 2px; }
+.widget-bot-boton:disabled { cursor: default; opacity: 0.7; }
+.widget-bot-boton-icono { display: inline-flex; color: rgb(var(--wb)); }
+.widget-bot-boton-icono .icon { width: 16px; height: 16px; }
+.widget-bot-boton-texto { flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Interruptor tipo iOS. */
+.widget-bot-switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: background-color 0.25s ease, box-shadow 0.25s ease;
+}
+.widget-bot-switch i {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.widget-bot.is-on .widget-bot-switch { background: linear-gradient(135deg, #4ade80, #16a34a); box-shadow: 0 0 12px rgba(74, 222, 128, 0.45); }
+.widget-bot.is-on .widget-bot-switch i { transform: translateX(16px); }
+
 @keyframes dot-live { 0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.55); } 70%, 100% { box-shadow: 0 0 0 7px rgba(74, 222, 128, 0); } }
 @keyframes dot-off { 0% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.6); } 70%, 100% { box-shadow: 0 0 0 7px rgba(248, 113, 113, 0); } }
+@keyframes widget-bot-anillo { 0% { opacity: 0.9; transform: scale(0.92); } 80%, 100% { opacity: 0; transform: scale(1.18); } }
 
 .sidebar-section {
   font-size: 0.66rem;
@@ -346,6 +468,21 @@ a:hover { color: var(--primary-dark); }
 .is-compacto .sidebar-colapsar { justify-content: center; padding: 0.6rem 0; }
 .is-compacto .sidebar-colapsar .icon { transform: scaleX(-1); }
 .is-compacto .sidebar-footer { justify-content: center; padding-left: 0; padding-right: 0; }
+.is-compacto .widget-bot { padding: 0; margin: 0.4rem auto 0; border: none; background: none; box-shadow: none; overflow: visible; }
+.is-compacto .widget-bot-cabeza,
+.is-compacto .widget-bot-boton-texto,
+.is-compacto .widget-bot-switch { display: none; }
+.is-compacto .widget-bot-boton {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 13px;
+  border-color: rgba(var(--wb), 0.35);
+  background: rgba(var(--wb), 0.12);
+  box-shadow: 0 0 16px -4px rgba(var(--wb), 0.6);
+}
+.is-compacto .widget-bot-boton-icono .icon { width: 18px; height: 18px; }
 
 .is-compacto .sidebar [data-tip]:hover::after {
   content: attr(data-tip);
@@ -506,7 +643,7 @@ a:hover { color: var(--primary-dark); }
 @keyframes hoja-in { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes hoja-fondo-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
-  .sidebar-negocio-dot, .sidebar-contador, .tabbar-contador, .hoja, .hoja-fondo { animation: none; }
+  .widget-bot-dot, .widget-bot-icono::after, .sidebar-contador, .tabbar-contador, .hoja, .hoja-fondo { animation: none !important; }
   .app-shell { transition: none; }
 }
 
@@ -2200,6 +2337,11 @@ a.badge-sm:hover { filter: brightness(0.95); }
   .sidebar-negocio { flex: 1; min-width: 0; margin: 0; }
   .sidebar-negocio-link { padding: 0.35rem 0.55rem; gap: 0.6rem; }
   .sidebar-negocio-avatar { width: 30px; height: 30px; font-size: 0.68rem; }
+  .sidebar-negocio-texto small { display: none; }
+  .sidebar-negocio-texto strong { font-size: 0.85rem; -webkit-line-clamp: 1; line-clamp: 1; }
+  .widget-bot { margin: 0; padding: 0; border: none; background: none; box-shadow: none; overflow: visible; flex-shrink: 0; }
+  .widget-bot-cabeza, .widget-bot-boton-texto { display: none; }
+  .widget-bot-boton { padding: 0.35rem 0.45rem; gap: 0.4rem; border-color: rgba(var(--wb), 0.3); }
   .app-shell.con-tabbar .main { padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }
   .sidebar-nav a.active::before { display: none; }
   .sidebar-contador { position: absolute; top: 1px; right: 1px; min-width: 16px; height: 16px; padding: 0 0.25rem; font-size: 0.6rem; }
@@ -3709,4 +3851,18 @@ button.log-evento:hover { text-decoration: underline; }
 .burbuja-ensenar .icon { width: 12px; height: 12px; }
 @media (max-width: 760px) {
   .aprendizaje-pregunta, .aprendizaje-respuesta { min-width: 160px; }
+}
+
+/* ── Links de Compra ── */
+.links-toolbar { display: flex; justify-content: flex-end; margin-bottom: 1rem; }
+.links-filtros { margin: 0 0 0.9rem; }
+.links-items { display: flex; flex-direction: column; gap: 0.1rem; max-width: 280px; }
+.links-items span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.links-items small, .links-total-link { color: var(--text-muted); font-size: 0.75rem; }
+.links-total-link { display: block; font-weight: 500; }
+.links-url { display: flex; align-items: center; gap: 0.5rem; margin: 0.6rem 0 1.1rem; padding: 0.55rem 0.7rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg, #f7f8fb); }
+.links-url code { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 0.78rem; color: var(--text-muted); }
+@media (max-width: 760px) {
+  .links-toolbar { justify-content: stretch; }
+  .links-toolbar .segmentado { width: 100%; overflow-x: auto; }
 }

@@ -407,7 +407,18 @@ function iniciarSyncPeriodica() {
       console.error('[shopify] Chequeo periódico falló:', err.message);
     }
   };
-  setTimeout(chequear, 60 * 1000);
+  // Al arrancar (después de un deploy) se registran en todas las tiendas los
+  // webhooks nuevos que falten (ej. orders/create para los links de compra), sin
+  // esperar a la sincronización diaria.
+  const alArrancar = async () => {
+    try {
+      for (const c of await shopify.listarConexionesActivas()) await asegurarWebhooks(c.clienteId);
+    } catch (err) {
+      console.warn('[shopify] No se pudieron revisar los webhooks al arrancar:', err.message);
+    }
+    await chequear();
+  };
+  setTimeout(alArrancar, 60 * 1000);
   setInterval(chequear, CHEQUEO_PERIODICO_MS).unref();
 }
 

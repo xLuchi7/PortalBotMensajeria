@@ -6,7 +6,6 @@ import { ErrorCarga, PageHead, useTitulo } from '../components/ui.jsx';
 import { useAvisar } from '../components/Toasts.jsx';
 import { useConfirm } from '../components/Confirm.jsx';
 import { useCliente } from '../components/Layout.jsx';
-import { useAuth } from '../lib/auth.jsx';
 import { api, useApi } from '../lib/api.js';
 
 const IDEAS = [
@@ -23,7 +22,6 @@ const IDEAS = [
 export default function Negocio() {
   useTitulo('Mi Negocio');
   const { clienteId } = useParams();
-  const { usuario } = useAuth();
   const { cliente, setCliente } = useCliente();
   const { data, error, reload } = useApi(`/clientes/${clienteId}/negocio`);
   const avisar = useAvisar();
@@ -67,10 +65,10 @@ export default function Negocio() {
           />
         ) : <div className="bot-switch"><span className="skeleton" style={{ width: '50%' }} /></div>}
 
-        {usuario.rol === 'admin' && cliente && (
+        {cliente && (
           <div className="ajuste">
             <div className="ajuste-texto">
-              <strong>Chats de números nuevos <span className="tag badge-admin">Solo admin</span></strong>
+              <strong>Chats de números nuevos</strong>
               <span>Cuando alguien escribe por primera vez, el bot arranca así en ese chat. No cambia los chats que ya existen.</span>
             </div>
             <div className="segmentado" role="radiogroup" aria-label="Chats de números nuevos">

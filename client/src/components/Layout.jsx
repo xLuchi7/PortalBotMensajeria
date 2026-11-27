@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { Link, NavLink, Navigate, Outlet, useLocation, useMatch } from 'react-router-dom';
 import Icon from './Icon.jsx';
 import { api } from '../lib/api.js';
-import { useToast } from './Toasts.jsx';
+import { useAvisar, useToast } from './Toasts.jsx';
+import { useConfirm } from './Confirm.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { iniciales, numero } from '../lib/format.js';
 import { EventosContext, TIPOS_EVENTO, useEnVivo, useFuenteEventos } from '../lib/eventos.jsx';
@@ -23,6 +24,7 @@ const GRUPOS = [
   ] },
   { titulo: 'Ventas', items: [
     { ruta: 'pedidos', label: 'Pedidos', icono: 'truck', contador: 'pedidos', ayuda: 'por confirmar' },
+    { ruta: 'links-compra', label: 'Links de Compra', icono: 'link' },
     { ruta: 'articulos', label: 'Artículos', icono: 'package' },
   ] },
   { titulo: 'Configuración', items: [
@@ -159,7 +161,6 @@ export default function Layout() {
   const base = clienteId ? `/clientes/${clienteId}` : null;
   // `contador` puede ser una clave o varias (se suman).
   const numero = i => (i.contador && contadores ? [].concat(i.contador).reduce((s, k) => s + (contadores[k] || 0), 0) : 0);
-  const botOn = cliente?.botActivo !== false;
   const nombreNegocio = cliente?.razonSocial || (esAdmin ? null : usuario.razonSocial);
 
   return (
@@ -171,19 +172,18 @@ export default function Layout() {
             <span className="brand-text"><strong>Portal de Clientes</strong><small>Tu asistente de ventas</small></span>
           </Link>
 
-          {/* El negocio que se está viendo, con el estado del asistente. */}
+          {/* El negocio que se está viendo y, debajo, el widget con el estado del bot. */}
           {clienteId && (
-            <div className={`sidebar-negocio ${cliente && !botOn ? 'is-off' : ''}`}>
+            <div className="sidebar-negocio">
               <Link to={`${base}/negocio`} className="sidebar-negocio-link"
-                    data-tip={`${nombreNegocio || 'Tu negocio'} · ${botOn ? 'Asistente respondiendo' : 'Asistente apagado'}`}
-                    title={compacto ? undefined : botOn ? 'Tu asistente está respondiendo. Configuralo en Mi Negocio.' : 'Tu asistente está apagado. Encendelo en Mi Negocio.'}>
+                    data-tip={nombreNegocio || 'Tu negocio'}
+                    title={compacto ? undefined : `${nombreNegocio || 'Tu negocio'} · Ver Mi Negocio`}>
                 <span className="sidebar-negocio-avatar">
                   {nombreNegocio ? iniciales(nombreNegocio) : '…'}
-                  {cliente && <i className="sidebar-negocio-dot" aria-hidden="true" />}
                 </span>
                 <span className="sidebar-negocio-texto">
+                  <small>{esAdmin ? 'Negocio' : 'Tu negocio'}</small>
                   <strong>{nombreNegocio || 'Cargando…'}</strong>
-                  <small>{!cliente ? ' ' : botOn ? 'Asistente respondiendo' : 'Asistente apagado'}</small>
                 </span>
               </Link>
               {esAdmin && (
@@ -193,6 +193,8 @@ export default function Layout() {
               )}
             </div>
           )}
+
+          {clienteId && <WidgetBot cliente={cliente} setCliente={setCliente} clienteId={clienteId} />}
 
           {esAdmin && (
             <div className="sidebar-admin">
@@ -232,6 +234,7 @@ export default function Layout() {
             </div>
           ))}
 
+
           <button type="button" className="sidebar-colapsar" onClick={alternarCompacto}
                   data-tip="Expandir menú" aria-label={compacto ? 'Expandir menú' : 'Contraer menú'} aria-pressed={compacto}>
             <Icon name="panelLeft" /><span>Contraer menú</span>
@@ -260,6 +263,60 @@ export default function Layout() {
         )}
       </div>
     </ClienteContext.Provider>
+  );
+}
+
+// ── Widget del bot ──────────────────────────────────────────────────────────
+
+// Abajo del menú: estado del asistente con un interruptor para prenderlo o
+// apagarlo sin ir a Mi Negocio. Apagarlo pide confirmación porque deja de
+// responder a todos los chats.
+function WidgetBot({ cliente, setCliente, clienteId }) {
+  const avisar = useAvisar();
+  const confirmar = useConfirm();
+  const [guardando, setGuardando] = useState(false);
+  const on = cliente?.botActivo !== false;
+
+  const alternar = async () => {
+    if (!cliente || guardando) return;
+    const activo = !on;
+    if (!activo) {
+      const ok = await confirmar({
+        titulo: '¿Apagar el asistente?',
+        mensaje: 'Deja de responder a todos tus chats. Los mensajes se siguen guardando y los ves en Chats.',
+        boton: 'Apagar',
+      });
+      if (!ok) return;
+    }
+    setGuardando(true);
+    try {
+      const r = await api(`/clientes/${clienteId}/negocio/bot`, { method: 'POST', body: { activo } });
+      setCliente(c => ({ ...c, botActivo: r.activo }));
+      avisar(r);
+    } catch (err) { avisar(err); }
+    setGuardando(false);
+  };
+
+  const estado = !cliente ? 'is-cargando' : on ? 'is-on' : 'is-off';
+  const tip = !cliente ? 'Asistente' : on ? 'Asistente respondiendo · tocá para apagar' : 'Asistente apagado · tocá para prender';
+
+  return (
+    <div className={`widget-bot ${estado}`}>
+      <div className="widget-bot-cabeza">
+        <span className="widget-bot-icono"><Icon name="bot" /></span>
+        <span className="widget-bot-texto">
+          <strong>Asistente IA</strong>
+          <small><i className="widget-bot-dot" aria-hidden="true" />{!cliente ? 'Cargando…' : on ? 'Respondiendo' : 'Apagado'}</small>
+        </span>
+      </div>
+      <button type="button" className="widget-bot-boton" role="switch" aria-checked={on}
+              aria-label={on ? 'Apagar el asistente' : 'Prender el asistente'} data-tip={tip}
+              disabled={!cliente || guardando} onClick={alternar}>
+        <span className="widget-bot-boton-icono"><Icon name="power" /></span>
+        <span className="widget-bot-boton-texto">{guardando ? 'Guardando…' : on ? 'Apagar' : 'Encender'}</span>
+        <span className="widget-bot-switch" aria-hidden="true"><i /></span>
+      </button>
+    </div>
   );
 }
 

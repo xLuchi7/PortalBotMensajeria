@@ -10,6 +10,7 @@ import InicioCliente from './pages/Inicio.jsx';
 import Chats from './pages/Chats.jsx';
 import Consultas from './pages/Consultas.jsx';
 import Pedidos from './pages/Pedidos.jsx';
+import LinksCompra from './pages/LinksCompra.jsx';
 import Articulos from './pages/Articulos.jsx';
 import ArticuloForm from './pages/ArticuloForm.jsx';
 import Negocio from './pages/Negocio.jsx';
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="escalamientos" element={<Navigate to="../reclamos" replace />} />
           <Route path="consultas" element={<Consultas />} />
           <Route path="pedidos" element={<Pedidos />} />
+          <Route path="links-compra" element={<LinksCompra />} />
           <Route path="articulos" element={<Articulos />} />
           <Route path="articulos/nuevo" element={<ArticuloForm />} />
           <Route path="articulos/:id/editar" element={<ArticuloForm />} />

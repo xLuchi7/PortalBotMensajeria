@@ -125,7 +125,8 @@ export default function Integraciones() {
               <ul>
                 <li>Cada producto y variante de Shopify aparece en Artículos y el bot lo ofrece por WhatsApp</li>
                 <li>Precios, stock y productos nuevos se actualizan solos al cambiarlos en Shopify</li>
-                <li>Al pasar un pedido a <strong>Confirmado</strong>, se crea en Shopify con el pago pendiente y descuenta stock</li>
+                <li>Con la <strong>venta por link</strong>, el bot le manda al cliente el link de tu tienda con el carrito armado: completa sus datos y paga ahí</li>
+                <li>Sin venta por link, al pasar un pedido a <strong>Confirmado</strong> se crea en Shopify con el pago pendiente y descuenta stock</li>
                 <li>Si cancelás un pedido ya enviado, también se cancela en Shopify y vuelve el stock</li>
                 <li>El pago, el despacho y el seguimiento que cargás en Shopify vuelven solos a Pedidos, y el bot puede avisarle al cliente</li>
                 <li>Los artículos de Shopify se editan en Shopify, no acá</li>
@@ -134,6 +135,10 @@ export default function Integraciones() {
           )}
         </div>
       </div>
+
+      {data && conectado && data.linkCompra && (
+        <VentaPorLink clienteId={clienteId} inicial={data.linkCompra.activo} />
+      )}
 
       {data && conectado && (
         <AvisosWhatsApp clienteId={clienteId} inicial={data.avisos} envioMensajes={data.envioMensajes} />
@@ -346,6 +351,54 @@ function Conectar({ clienteId, conexion, shopPendiente }) {
         <p>La persona dueña de la tienda, o alguien de tu equipo con permiso para instalar apps en Shopify.</p>
       </details>
     </>
+  );
+}
+
+// Interruptor de la venta por link de compra (el bot manda el checkout de Shopify
+// con el carrito armado en vez de tomar el pedido en el portal).
+function VentaPorLink({ clienteId, inicial }) {
+  const avisar = useAvisar();
+  const [activo, setActivo] = useState(inicial);
+  const [guardando, setGuardando] = useState(false);
+  const cambiar = async () => {
+    setGuardando(true);
+    try {
+      const r = await api(`/clientes/${clienteId}/links-compra/config`, { method: 'POST', body: { activo: !activo } });
+      setActivo(r.config.activo);
+      avisar(r);
+    } catch (err) {
+      avisar(err);
+    }
+    setGuardando(false);
+  };
+  return (
+    <div className="card avisos-card">
+      <div className="integracion-head">
+        <div className="integracion-logo avisos-logo"><Icon name="link" /></div>
+        <div>
+          <h2>Venta por link de compra</h2>
+          <p>Cuando el cliente confirma, el bot le manda el link de tu tienda con el carrito ya armado.</p>
+        </div>
+      </div>
+      <div className="avisos-lista">
+        <div className={`aviso-item ${activo ? 'is-on' : ''}`}>
+          <div className="aviso-icono"><Icon name="shoppingBag" /></div>
+          <div className="aviso-cuerpo">
+            <div className="aviso-titulo">{activo ? 'Activada' : 'Desactivada'}</div>
+            <div className="aviso-texto">
+              {activo
+                ? <>El cliente completa sus datos de envío y paga en tu tienda de Shopify. El pedido entra a Shopify recién cuando termina la compra. Seguí cada link en <Link to={`/clientes/${clienteId}/links-compra`}>Links de Compra</Link>.</>
+                : 'El bot toma el pedido por WhatsApp y lo ves en Pedidos; al confirmarlo se crea en Shopify con el pago pendiente.'}
+            </div>
+            <div className="aviso-ejemplo">Ej: “Te dejo el link con tu pedido ya cargado. Ahí completás tus datos de envío y pagás: https://tu-tienda.myshopify.com/cart/…”</div>
+          </div>
+          <button type="button" role="switch" aria-checked={activo} aria-label={`${activo ? 'Desactivar' : 'Activar'} venta por link`}
+                  className="mini-switch" disabled={guardando} onClick={cambiar}>
+            <span />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

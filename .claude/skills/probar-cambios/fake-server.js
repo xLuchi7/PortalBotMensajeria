@@ -145,6 +145,9 @@ stub('src/services/usuarioService.js', {
 });
 
 stub('src/services/clienteService.js', {
+  avisosConfig: {},
+  async obtenerAvisosConfig(id) { return this.avisosConfig[id] ?? null; },
+  async setAvisosConfig(id, json) { this.avisosConfig[id] = json; },
   async listarClientes(page) { return { ...pag(clientes, page), activos: clientes.filter(c => c.activo).length }; },
   async listarClientesActivos() { return clientes.filter(c => c.activo).map(c => ({ id: c.id, razonSocial: c.razonSocial })); },
   async obtenerCliente(id) { const c = clientes.find(x => x.id === Number(id)); if (!c) return null; const { contexto, ...resto } = c; return resto; },
@@ -376,6 +379,37 @@ stub('src/services/shopifyOrderService.js', {
     return { omitido: true };
   },
   async enviarPedido(id) { const p = pedidos.find(x => x.id === id); return p.shopifyOrderId ? { omitido: true, yaEnviado: true } : { error: 'Sigue sin stock' }; },
+});
+// Links de compra (cliente 1, el de Shopify). Estados: enviado | comprado | pagado | cancelado.
+let linkCompraActivo = true;
+const linksCompra = [
+  { id: 4, userId: '59894422029', contactoNombre: 'Ana', estado: 'pagado', fecha: '27/11/2026, 16:40', fechaCompra: '27/11/2026, 16:53', fechaPago: '27/11/2026, 16:54', url: 'https://tienda-test.myshopify.com/cart/111:1?attributes%5Bwhatsapp%5D=AAAAAAAAAAAAAAAA&ref=wa-AAAAAAAAAAAAAAAA', items: [{ articuloId: 1, nombre: 'Estaca Solar Premium x4 - 8 LEDs cálidas', cantidad: 1, precio: 1970 }], unidades: 1, total: 1970, totalCompra: 2055, moneda: 'UYU', shopifyOrderId: 'gid://shopify/Order/9001', shopifyOrderName: '#1042', shopifyPago: 'pagado', shopifyEnvio: 'despachado' },
+  { id: 3, userId: '59899111222', contactoNombre: null, estado: 'comprado', fecha: '26/11/2026, 11:02', fechaCompra: '26/11/2026, 11:20', url: 'https://tienda-test.myshopify.com/cart/111:2,222:1?attributes%5Bwhatsapp%5D=BBBBBBBBBBBBBBBB&ref=wa-BBBBBBBBBBBBBBBB', items: [{ articuloId: 1, nombre: 'Estaca Solar Premium x4 - 8 LEDs cálidas', cantidad: 2, precio: 1970 }, { articuloId: 2, nombre: 'Guirnalda LED 10 m', cantidad: 1, precio: 890 }], unidades: 3, total: 4830, totalCompra: 4915, moneda: 'UYU', shopifyOrderId: 'gid://shopify/Order/9000', shopifyOrderName: '#1041', shopifyPago: 'pendiente', shopifyEnvio: 'sin_enviar' },
+  { id: 2, userId: '59899333444', contactoNombre: 'Martín', estado: 'enviado', fecha: '25/11/2026, 20:15', url: 'https://tienda-test.myshopify.com/cart/222:1?attributes%5Bwhatsapp%5D=CCCCCCCCCCCCCCCC&ref=wa-CCCCCCCCCCCCCCCC', items: [{ articuloId: 2, nombre: 'Guirnalda LED 10 m', cantidad: 1, precio: 890 }], unidades: 1, total: 890 },
+  { id: 1, userId: '59899555666', contactoNombre: null, estado: 'cancelado', fecha: '20/11/2026, 09:30', fechaCompra: '20/11/2026, 09:45', url: 'https://tienda-test.myshopify.com/cart/111:1?attributes%5Bwhatsapp%5D=DDDDDDDDDDDDDDDD&ref=wa-DDDDDDDDDDDDDDDD', items: [{ articuloId: 1, nombre: 'Estaca Solar Premium x4 - 8 LEDs cálidas', cantidad: 1, precio: 1970 }], unidades: 1, total: 1970, totalCompra: 2055, shopifyOrderId: 'gid://shopify/Order/8999', shopifyOrderName: '#1039', shopifyPago: 'reembolsado', shopifyEnvio: 'sin_enviar' },
+];
+stub('src/services/linkCompraService.js', {
+  async actualizarDesdeOrden() { return false; },
+  tokenDeOrden: () => null,
+  async listar(clienteId, { page = 1, estado = null } = {}) {
+    const todos = clienteId === 1 ? linksCompra : [];
+    const cuenta = e => todos.filter(l => l.estado === e).length;
+    const rows = todos.filter(l => !['enviado', 'comprado', 'pagado', 'cancelado'].includes(estado) || l.estado === estado);
+    const pagados = todos.filter(l => l.estado === 'pagado');
+    return {
+      resumen: {
+        links: todos.length, personas: new Set(todos.map(l => l.userId)).size,
+        comprados: cuenta('comprado') + cuenta('pagado'), pagados: cuenta('pagado'), cancelados: cuenta('cancelado'), sinComprar: cuenta('enviado'),
+        montoLinks: todos.reduce((s, l) => s + l.total, 0),
+        montoPagado: pagados.reduce((s, l) => s + (l.totalCompra ?? l.total), 0),
+        montoPendiente: todos.filter(l => l.estado === 'comprado').reduce((s, l) => s + (l.totalCompra ?? l.total), 0),
+        filtrados: rows.length,
+      },
+      rows, page, pageSize: 20, total: rows.length, totalPages: 1,
+    };
+  },
+  async leerConfig(clienteId) { return clienteId === 1 && conexion1 ? { activo: linkCompraActivo } : null; },
+  async guardarConfig(clienteId, activo) { if (clienteId !== 1 || !conexion1) return false; linkCompraActivo = activo; return true; },
 });
 stub('src/services/shopifyWebhookService.js', { handler: (req, res) => res.sendStatus(200), verificarFirma: () => true });
 

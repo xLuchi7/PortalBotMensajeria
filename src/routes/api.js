@@ -26,6 +26,7 @@ const avisos = require('../services/avisoService');
 const logs = require('../services/logService');
 const eventos = require('../services/eventosService');
 const aprendizajes = require('../services/aprendizajeService');
+const linksCompra = require('../services/linkCompraService');
 const { crearLimite } = require('../services/limiteService');
 const { memo } = require('../services/cacheCorto');
 
@@ -521,8 +522,8 @@ router.post('/clientes/:clienteId/negocio/bot', resolveClienteAccess, h(async (r
   (activo ? ok : aviso)(res, mensaje, { activo });
 }));
 
-// Default para números nuevos. Por ahora solo lo toca el admin (fase de prueba).
-router.post('/clientes/:clienteId/negocio/chats-nuevos', requireAdmin, resolveClienteAccess, h(async (req, res) => {
+// Default para números nuevos (lo cambia cualquier usuario de su Cliente).
+router.post('/clientes/:clienteId/negocio/chats-nuevos', resolveClienteAccess, h(async (req, res) => {
   const activo = req.body.activo === true;
   await clientes.setBotChatsNuevos(req.clienteId, activo);
   ok(res, activo ? 'Los Chats Nuevos Arrancan Con El Bot Respondiendo' : 'Los Chats Nuevos Arrancan Sin Respuesta Del Bot', { activo });
@@ -866,6 +867,23 @@ router.post('/clientes/:clienteId/pedidos/:id/shopify/reintentar', resolveClient
   aviso(res, 'Este Pedido No Se Puede Enviar A Shopify Todavía');
 }));
 
+// ── Links de compra (el bot manda el checkout de Shopify con el carrito armado) ──
+
+router.get('/clientes/:clienteId/links-compra', resolveClienteAccess, h(async (req, res) => {
+  const [resultado, config, conexion] = await Promise.all([
+    linksCompra.listar(req.clienteId, { page: paginaDe(req), estado: req.query.estado, dias: req.query.dias }),
+    linksCompra.leerConfig(req.clienteId),
+    shopify.obtenerConexionActiva(req.clienteId),
+  ]);
+  res.json({ ...resultado, config: conexion ? config : null, shopDomain: conexion?.shopDomain || null });
+}));
+
+router.post('/clientes/:clienteId/links-compra/config', resolveClienteAccess, h(async (req, res) => {
+  const activo = req.body?.activo === true;
+  if (!(await linksCompra.guardarConfig(req.clienteId, activo))) return falla(res, 409, 'Primero Conectá Tu Tienda De Shopify');
+  ok(res, activo ? 'Venta Por Link Activada' : 'Venta Por Link Desactivada', { config: { activo } });
+}));
+
 // ── Consultas ───────────────────────────────────────────────────────────────
 
 router.get('/clientes/:clienteId/consultas', resolveClienteAccess, h(async (req, res) => {
@@ -881,11 +899,12 @@ function urlPublica(req) {
 }
 
 router.get('/clientes/:clienteId/integraciones', resolveClienteAccess, h(async (req, res) => {
-  const [conexion, resumen, app, avisosConfig] = await Promise.all([
+  const [conexion, resumen, app, avisosConfig, linkCompra] = await Promise.all([
     shopify.obtenerConexion(req.clienteId),
     shopifySync.resumen(req.clienteId),
     shopifyApps.obtenerAppDeCliente(req.clienteId),
     avisos.leerConfig(req.clienteId),
+    linksCompra.leerConfig(req.clienteId),
   ]);
   const base = urlPublica(req);
   const esAdmin = req.session.usuario.rol === 'admin';
@@ -893,6 +912,7 @@ router.get('/clientes/:clienteId/integraciones', resolveClienteAccess, h(async (
     conexion,
     resumen,
     avisos: avisosConfig,
+    linkCompra,
     // Sin BOT_URL / BOT_API_TOKEN el portal no puede mandar avisos.
     envioMensajes: bot.envioHabilitado(),
     configurado: Boolean(app && !app.secretIlegible),

@@ -4,6 +4,7 @@ const shopify = require('./shopifyClient');
 const apps = require('./shopifyAppService');
 const sync = require('./shopifySyncService');
 const orders = require('./shopifyOrderService');
+const linksCompra = require('./linkCompraService');
 const eventos = require('./eventosService');
 
 // X-Shopify-Hmac-Sha256 = base64(HMAC-SHA256(body crudo, client secret)).
@@ -69,8 +70,16 @@ async function procesar(topic, shopDomain, payload, appId) {
     case 'products/delete':
       await sync.desactivarProducto(clienteId, payload.id);
       break;
+    case 'orders/create':
     case 'orders/updated':
     case 'orders/cancelled':
+      // Compra hecha con un link de compra del bot (LinksCompra); si no, puede ser un
+      // Pedido del portal enviado a Shopify (orders/create de esos no trae nada nuevo).
+      if (await linksCompra.actualizarDesdeOrden(clienteId, payload)) {
+        eventos.emitir(clienteId, 'pedido');
+        break;
+      }
+      if (topic === 'orders/create') break;
       await orders.actualizarDesdeShopify(clienteId, payload);
       eventos.emitir(clienteId, 'pedido');
       break;

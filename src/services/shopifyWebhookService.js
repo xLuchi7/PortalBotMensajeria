@@ -6,6 +6,7 @@ const sync = require('./shopifySyncService');
 const orders = require('./shopifyOrderService');
 const linksCompra = require('./linkCompraService');
 const eventos = require('./eventosService');
+const dashboard = require('./dashboardService');
 
 // X-Shopify-Hmac-Sha256 = base64(HMAC-SHA256(body crudo, client secret)).
 // Tiene que calcularse sobre los bytes tal cual llegaron, antes de parsear.
@@ -73,6 +74,8 @@ async function procesar(topic, shopDomain, payload, appId) {
     case 'orders/create':
     case 'orders/updated':
     case 'orders/cancelled':
+      // Toda orden de la tienda (venga de donde venga) entra al Dashboard.
+      dashboard.programarSync(clienteId);
       // Compra hecha con un link de compra del bot (LinksCompra); si no, puede ser un
       // Pedido del portal enviado a Shopify (orders/create de esos no trae nada nuevo).
       if (await linksCompra.actualizarDesdeOrden(clienteId, payload)) {

@@ -104,6 +104,8 @@ app.use('/api', apiRoutes);
 // Flujo de instalación de Shopify (/shopify y /shopify/callback): lo navega el
 // navegador, así que redirige a páginas del frontend con un toast en la sesión.
 app.use('/', shopifyRoutes.publicRouter);
+// Vuelta de los OAuth de Meta Ads y Mercado Pago (Dashboard): mismo esquema.
+app.use('/', require('./src/routes/conexiones'));
 
 // Cualquier otra página la resuelve React (client/src/App.jsx).
 app.get(/.*/, (req, res) => {

@@ -113,6 +113,21 @@ async function setTelefonoAlertas(id, telefono) {
   await setCampo(id, 'telefonoAlertas', { texto: telefono });
 }
 
+// Horario de atención del bot ("HH:MM", hora Argentina). null/null = responde las 24 hs.
+// Fuera de horario el bot guarda los mensajes y los responde a la hora de apertura.
+async function obtenerHorarioBot(id) {
+  const fila = (await ejecutar('dbo.usp_Portal_ClienteHorarioBot', { id: [sql.Int, id] })).recordset[0];
+  return { desde: fila?.desde ?? null, hasta: fila?.hasta ?? null };
+}
+
+async function setHorarioBot(id, desde, hasta) {
+  await ejecutar('dbo.usp_Portal_ClienteHorarioBotSet', {
+    id: [sql.Int, id],
+    desde: [sql.VarChar(5), desde],
+    hasta: [sql.VarChar(5), hasta],
+  });
+}
+
 // Config de los avisos automáticos (JSON crudo: lo valida avisoService).
 async function obtenerAvisosConfig(id) {
   return (await leerCliente(id))?.avisosConfig ?? null;
@@ -145,6 +160,8 @@ module.exports = {
   actualizarContexto,
   obtenerTelefonoAlertas,
   setTelefonoAlertas,
+  obtenerHorarioBot,
+  setHorarioBot,
   obtenerAvisosConfig,
   setAvisosConfig,
   desactivarCliente,

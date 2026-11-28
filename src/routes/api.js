@@ -27,6 +27,11 @@ const logs = require('../services/logService');
 const eventos = require('../services/eventosService');
 const aprendizajes = require('../services/aprendizajeService');
 const linksCompra = require('../services/linkCompraService');
+const dashboard = require('../services/dashboardService');
+const metaAds = require('../services/metaAdsService');
+const mercadoPago = require('../services/mercadoPagoService');
+const oauthState = require('../services/oauthStateService');
+const { descifrar } = require('../services/cryptoService');
 const { crearLimite } = require('../services/limiteService');
 const { memo } = require('../services/cacheCorto');
 
@@ -445,8 +450,16 @@ router.delete('/usuarios/:id', requireAdmin, h(async (req, res) => {
 // ── Mi Negocio ──────────────────────────────────────────────────────────────
 
 router.get('/clientes/:clienteId/negocio', resolveClienteAccess, h(async (req, res) => {
-  const [contexto, telefonoAlertas] = await Promise.all([clientes.obtenerContexto(req.clienteId), clientes.obtenerTelefonoAlertas(req.clienteId)]);
-  res.json({ contexto: contexto || '', telefonoAlertas: telefonoAlertas || '' });
+  const [contexto, telefonoAlertas, horarioBot] = await Promise.all([
+    clientes.obtenerContexto(req.clienteId),
+    clientes.obtenerTelefonoAlertas(req.clienteId),
+    // Si todavía no se corrió el SQL del horario, la página carga igual (sin horario).
+    clientes.obtenerHorarioBot(req.clienteId).catch(err => {
+      console.warn(`[negocio] No se pudo leer el horario del bot: ${err.message}`);
+      return { desde: null, hasta: null };
+    }),
+  ]);
+  res.json({ contexto: contexto || '', telefonoAlertas: telefonoAlertas || '', horarioBot });
 }));
 
 router.put('/clientes/:clienteId/negocio', resolveClienteAccess, h(async (req, res) => {
@@ -463,6 +476,19 @@ router.put('/clientes/:clienteId/negocio/alertas', resolveClienteAccess, h(async
   }
   await clientes.setTelefonoAlertas(req.clienteId, digitos || null);
   (digitos ? ok : aviso)(res, digitos ? 'Número De Alertas Guardado' : 'Sin Número De Alertas: Nadie Recibe El Aviso Por WhatsApp', { telefonoAlertas: digitos });
+}));
+
+// Horario de atención del bot (hora Argentina). Sin horario = responde las 24 hs.
+router.put('/clientes/:clienteId/negocio/horario', resolveClienteAccess, h(async (req, res) => {
+  const hora = v => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(v ?? '')) ? String(v) : null);
+  const conHorario = req.body.activo === true;
+  const desde = hora(req.body.desde);
+  const hasta = hora(req.body.hasta);
+  if (conHorario && (!desde || !hasta)) return falla(res, 400, 'Horario Inválido');
+  if (conHorario && desde === hasta) return falla(res, 400, 'La Hora De Inicio Y De Fin No Pueden Ser Iguales');
+  await clientes.setHorarioBot(req.clienteId, conHorario ? desde : null, conHorario ? hasta : null);
+  const horarioBot = conHorario ? { desde, hasta } : { desde: null, hasta: null };
+  ok(res, conHorario ? 'Horario Guardado' : 'El Bot Responde Las 24 Hs', { horarioBot });
 }));
 
 // ── Aprendizajes ────────────────────────────────────────────────────────────
@@ -882,6 +908,129 @@ router.post('/clientes/:clienteId/links-compra/config', resolveClienteAccess, h(
   const activo = req.body?.activo === true;
   if (!(await linksCompra.guardarConfig(req.clienteId, activo))) return falla(res, 409, 'Primero Conectá Tu Tienda De Shopify');
   ok(res, activo ? 'Venta Por Link Activada' : 'Venta Por Link Desactivada', { config: { activo } });
+}));
+
+// ── Dashboard (Shopify + Meta Ads + costos) ─────────────────────────────────
+
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_DIAS_DASHBOARD = 366;
+
+function fechaValida(v) {
+  if (!FECHA_RE.test(String(v || ''))) return null;
+  const d = new Date(`${v}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v ? null : v;
+}
+
+router.get('/clientes/:clienteId/dashboard', resolveClienteAccess, h(async (req, res) => {
+  const desde = fechaValida(req.query.desde);
+  const hasta = fechaValida(req.query.hasta);
+  if (!desde || !hasta || desde > hasta) return falla(res, 400, 'Revisá Las Fechas');
+  if (dashboard.diasEntre(desde, hasta) > MAX_DIAS_DASHBOARD) return falla(res, 400, 'Elegí Un Rango De Hasta Un Año');
+  res.set('Cache-Control', 'no-store');
+  res.json(await dashboard.datos(req.clienteId, { desde, hasta }));
+}));
+
+router.post('/clientes/:clienteId/dashboard/actualizar', resolveClienteAccess, h(async (req, res) => {
+  const desde = fechaValida(req.body?.desde) || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  await dashboard.actualizar(req.clienteId, desde);
+  ok(res, 'Actualizando Datos');
+}));
+
+// Costos que Shopify no sabe: comisión del medio de pago, envíos, costos fijos...
+router.post('/clientes/:clienteId/dashboard/config', resolveClienteAccess, h(async (req, res) => {
+  const b = req.body || {};
+  const num = (v, max, { opcional = false } = {}) => {
+    if (opcional && (v === '' || v == null)) return null;
+    const n = Number(v ?? 0);
+    return Number.isFinite(n) && n >= 0 && n <= max ? Math.round(n * 10000) / 10000 : undefined;
+  };
+  const cfg = {
+    comisionPct: num(b.comisionPct, 100),
+    comisionFija: num(b.comisionFija, 1e9),
+    envioPorOrden: num(b.envioPorOrden, 1e9),
+    costoProductoPct: num(b.costoProductoPct, 100, { opcional: true }),
+    costosFijosMes: num(b.costosFijosMes, 1e11),
+    cotizacionUsd: num(b.cotizacionUsd, 1e9, { opcional: true }),
+  };
+  if (Object.values(cfg).some(v => v === undefined)) return falla(res, 400, 'Revisá Los Números');
+  if (cfg.cotizacionUsd === 0) cfg.cotizacionUsd = null;
+  await dashboard.guardarConfig(req.clienteId, cfg);
+  ok(res, 'Costos Guardados');
+}));
+
+// Cuentas publicitarias que quedaron para elegir después del OAuth (el token
+// queda cifrado en la sesión 15 min, nunca va al navegador).
+const PENDIENTE_TTL_MS = 15 * 60 * 1000;
+function metaPendiente(req) {
+  const p = req.session.metaPendiente;
+  if (!p || p.clienteId !== req.clienteId || Date.now() - p.t > PENDIENTE_TTL_MS) return null;
+  return p;
+}
+
+router.post('/clientes/:clienteId/meta-ads/oauth', resolveClienteAccess, h(async (req, res) => {
+  if (!metaAds.oauthDisponible()) return falla(res, 409, 'Falta Configurar La App De Meta En El Servidor');
+  const state = oauthState.crear('meta', { clienteId: req.clienteId, usuarioId: req.session.usuario.id });
+  res.json({ ok: true, url: metaAds.urlAutorizacion({ state, redirectUri: `${oauthState.baseUrl(req)}/meta/callback` }) });
+}));
+
+router.get('/clientes/:clienteId/meta-ads/pendiente', resolveClienteAccess, h(async (req, res) => {
+  const p = metaPendiente(req);
+  res.set('Cache-Control', 'no-store');
+  res.json({ cuentas: p ? p.cuentas : [] });
+}));
+
+router.post('/clientes/:clienteId/meta-ads', resolveClienteAccess, h(async (req, res) => {
+  try {
+    let token = req.body?.token;
+    let expiraSeg = null;
+    if (req.body?.pendiente) {
+      const p = metaPendiente(req);
+      if (!p) return falla(res, 409, 'Pasó Mucho Tiempo: Volvé A Conectar Con Facebook');
+      if (!p.cuentas.some(c => c.id === metaAds.normalizarCuenta(req.body?.adAccountId))) return falla(res, 400, 'Elegí Una De Las Cuentas');
+      token = descifrar(p.tokenEnc);
+      expiraSeg = p.expiraSeg;
+    }
+    const info = await metaAds.conectar(req.clienteId, { adAccountId: req.body?.adAccountId, token, expiraSeg });
+    if (req.body?.pendiente) delete req.session.metaPendiente;
+    const desde = fechaValida(req.body?.desde) || new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+    dashboard.sincronizarMeta(req.clienteId, desde, { forzar: true })
+      .catch(err => console.warn(`[dashboard] Primera sync de Meta Ads (cliente ${req.clienteId}):`, err.message));
+    (info.activa ? ok : aviso)(res, info.activa ? 'Meta Ads Conectado' : 'Conectado, Pero La Cuenta Publicitaria No Está Activa');
+  } catch (err) {
+    if (err instanceof metaAds.MetaAdsError) return falla(res, 400, 'No Pudimos Conectar Meta Ads', { detalle: err.message });
+    throw err;
+  }
+}));
+
+router.post('/clientes/:clienteId/meta-ads/desconectar', resolveClienteAccess, h(async (req, res) => {
+  await metaAds.desconectar(req.clienteId);
+  ok(res, 'Meta Ads Desconectado');
+}));
+
+// ── Mercado Pago (cobros y comisiones reales para el Dashboard) ─────────────
+
+router.post('/clientes/:clienteId/mercadopago/oauth', resolveClienteAccess, h(async (req, res) => {
+  if (!mercadoPago.oauthDisponible()) return falla(res, 409, 'Falta Configurar La App De Mercado Pago En El Servidor');
+  const state = oauthState.crear('mp', { clienteId: req.clienteId, usuarioId: req.session.usuario.id });
+  res.json({ ok: true, url: mercadoPago.urlAutorizacion({ state, redirectUri: `${oauthState.baseUrl(req)}/mercadopago/callback` }) });
+}));
+
+// Access Token de producción pegado a mano.
+router.post('/clientes/:clienteId/mercadopago', resolveClienteAccess, h(async (req, res) => {
+  try {
+    await mercadoPago.conectarManual(req.clienteId, req.body?.token);
+  } catch (err) {
+    if (err instanceof mercadoPago.MercadoPagoError) return falla(res, 400, 'No Pudimos Conectar Mercado Pago', { detalle: err.message });
+    throw err;
+  }
+  dashboard.sincronizarMp(req.clienteId)
+    .catch(err => console.warn(`[dashboard] Primera sync de Mercado Pago (cliente ${req.clienteId}):`, err.message));
+  ok(res, 'Mercado Pago Conectado');
+}));
+
+router.post('/clientes/:clienteId/mercadopago/desconectar', resolveClienteAccess, h(async (req, res) => {
+  await mercadoPago.desconectar(req.clienteId);
+  ok(res, 'Mercado Pago Desconectado');
 }));
 
 // ── Consultas ───────────────────────────────────────────────────────────────

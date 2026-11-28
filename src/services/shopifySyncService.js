@@ -58,6 +58,7 @@ const CAMPOS_PRODUCTO = `
   priceRangeV2 { minVariantPrice { amount currencyCode } maxVariantPrice { amount currencyCode } }
   collections(first: 10) { nodes { id title handle } }
   metafields(first: 25) { ${METACAMPOS} }
+  infoBot: metafield(namespace: "custom", key: "info_bot") { type value }
   media(first: ${MAX_IMAGENES}) { nodes { ${IMAGEN} } }
 `;
 
@@ -132,6 +133,25 @@ const numeroONull = (v) => (v == null || v === '' || Number.isNaN(Number(v)) ? n
 const textoONull = (v, max) => (v ? String(v).slice(0, max) : null);
 const metacampos = (m) => (m?.nodes || []).map(x => ({ ...x, value: String(x.value ?? '').slice(0, 2000) }));
 
+// Metacampo custom.info_bot: lo que el negocio escribe para que el bot lo use al
+// responder (va a Articulos.infoBot). Si es de texto enriquecido, Shopify manda
+// un JSON de nodos: se pasa a texto plano.
+function textoDeRichText(nodo) {
+  if (!nodo || typeof nodo !== 'object') return '';
+  if (nodo.type === 'text') return nodo.value || '';
+  const hijos = (nodo.children || []).map(textoDeRichText);
+  if (nodo.type === 'list') return hijos.map(h => `- ${h}`).join('\n');
+  return hijos.join(nodo.type === 'root' ? '\n\n' : '');
+}
+function infoBotDe(metacampo) {
+  const valor = metacampo?.value;
+  if (!valor) return null;
+  if (metacampo.type === 'rich_text_field') {
+    try { return textoDeRichText(JSON.parse(valor)).trim() || null; } catch { /* va el valor crudo */ }
+  }
+  return String(valor).trim() || null;
+}
+
 function aArticulo(producto, variante) {
   const tituloVariante = variante.title && variante.title !== 'Default Title' ? variante.title : null;
   const nombre = (tituloVariante ? `${producto.title} - ${tituloVariante}` : producto.title).slice(0, 200);
@@ -149,7 +169,7 @@ function aArticulo(producto, variante) {
   const actualizado = [producto.updatedAt, variante.updatedAt].filter(Boolean).sort().pop();
 
   // El JSON completo, sin las fotos (ya van en `imagenes`).
-  const { media: _m, ...productoSinFotos } = producto;
+  const { media: _m, infoBot: _ib, ...productoSinFotos } = producto;
   const { media: _vm, product: _p, ...varianteSinFotos } = variante;
   const datos = {
     producto: { ...productoSinFotos, metafields: metacampos(producto.metafields), collections: producto.collections?.nodes || [] },
@@ -163,6 +183,7 @@ function aArticulo(producto, variante) {
     nombre,
     codigo: textoONull(variante.sku, 50),
     descripcion: producto.description || null,
+    infoBot: infoBotDe(producto.infoBot),
     precio: numeroONull(variante.price),
     activo: producto.status === 'ACTIVE',
     usaStock: tracked,
@@ -209,6 +230,7 @@ async function upsertArticuloUnaVez(clienteId, a) {
     codigo: [sql.NVarChar(50), a.codigo],
     nombre: [sql.NVarChar(200), a.nombre],
     descripcion: [sql.NVarChar(sql.MAX), a.descripcion],
+    infoBot: [sql.NVarChar(sql.MAX), a.infoBot],
     precio: [sql.Decimal(12, 2), a.precio],
     activo: [sql.Bit, a.activo ? 1 : 0],
     usaStock: [sql.Bit, a.usaStock ? 1 : 0],

@@ -21,6 +21,19 @@ module.exports = {
     whatsappToken: process.env.WHATSAPP_ACCESS_TOKEN,
     businessId: process.env.META_BUSINESS_ID,
     apiVersion: process.env.META_API_VERSION || 'v25.0',
+    // Opcionales: botón "Conectar con Facebook" del Dashboard (OAuth para leer
+    // Meta Ads). Sin esto queda solo la carga manual de cuenta + token.
+    // META_ADS_CONFIG_ID: configuración de "Facebook Login for Business" (si la app usa eso en vez de scopes).
+    appId: process.env.META_APP_ID,
+    appSecret: process.env.META_APP_SECRET,
+    adsConfigId: process.env.META_ADS_CONFIG_ID,
+  },
+  // Opcionales: botón "Conectar con Mercado Pago" (OAuth de una app de
+  // developers.mercadopago.com). Sin esto queda la carga manual del Access Token.
+  mercadoPago: {
+    clientId: process.env.MP_CLIENT_ID,
+    clientSecret: process.env.MP_CLIENT_SECRET,
+    authUrl: process.env.MP_AUTH_URL || 'https://auth.mercadopago.com/authorization',
   },
   shopify: {
     apiVersion: process.env.SHOPIFY_API_VERSION || '2026-10',

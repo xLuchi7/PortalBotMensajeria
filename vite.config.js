@@ -20,6 +20,8 @@ export default defineConfig({
     proxy: {
       '/api': API,
       '/shopify': API,
+      '/meta/callback': API,
+      '/mercadopago/callback': API,
       '/plantillas': API,
       '/favicon.svg': API,
     },

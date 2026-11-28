@@ -82,6 +82,13 @@ export default function Negocio() {
       </section>
 
       <section className="seccion">
+        <h2 className="seccion-titulo"><Icon name="clock" /> Horario de atención del bot</h2>
+        {error && !data ? <ErrorCarga error={error} onReintentar={reload} />
+          : !data ? <div className="card editor-card"><span className="skeleton" style={{ width: '60%' }} /></div>
+          : <HorarioBot clienteId={clienteId} inicial={data.horarioBot} />}
+      </section>
+
+      <section className="seccion">
         <h2 className="seccion-titulo"><Icon name="phone" /> Aviso de revisión humana</h2>
         {error && !data ? <ErrorCarga error={error} onReintentar={reload} />
           : !data ? <div className="card editor-card"><span className="skeleton" style={{ width: '60%' }} /></div>
@@ -95,6 +102,62 @@ export default function Negocio() {
           : <EditorContexto clienteId={clienteId} inicial={data.contexto || ''} />}
       </section>
     </>
+  );
+}
+
+// Fuera de este horario (hora de Argentina) el bot no contesta: guarda los mensajes y a la
+// hora de inicio responde todo lo que quedó pendiente, leyendo la conversación completa.
+const horarioDe = h => ({ activo: Boolean(h?.desde && h?.hasta), desde: h?.desde || '08:00', hasta: h?.hasta || '19:00' });
+
+function HorarioBot({ clienteId, inicial }) {
+  const [valor, setValor] = useState(() => horarioDe(inicial));
+  const [guardado, setGuardado] = useState(() => horarioDe(inicial));
+  const [guardando, setGuardando] = useState(false);
+  const avisar = useAvisar();
+  const sucio = valor.activo !== guardado.activo || (valor.activo && (valor.desde !== guardado.desde || valor.hasta !== guardado.hasta));
+  const cambiar = cambio => setValor(v => ({ ...v, ...cambio }));
+
+  const guardar = async (e) => {
+    e.preventDefault();
+    if (valor.activo && valor.desde === valor.hasta) {
+      avisar({ tipo: 'warning', mensaje: 'La Hora De Inicio Y De Fin No Pueden Ser Iguales' });
+      return;
+    }
+    setGuardando(true);
+    try {
+      const r = await api(`/clientes/${clienteId}/negocio/horario`, { method: 'PUT', body: valor });
+      avisar(r);
+      const nuevo = horarioDe(r.horarioBot);
+      setValor(nuevo);
+      setGuardado(nuevo);
+    } catch (err) { avisar(err); }
+    setGuardando(false);
+  };
+
+  return (
+    <div className="card alertas-card">
+      <p className="alertas-ayuda">
+        Fuera de este horario el bot no responde: los mensajes se guardan (los ves en Chats) y a la hora de inicio
+        el bot contesta todo lo que quedó pendiente, leyendo la conversación completa.
+      </p>
+      <form onSubmit={guardar} className="horario-form">
+        <div className="segmentado" role="radiogroup" aria-label="Horario del bot">
+          <button type="button" role="radio" aria-checked={!valor.activo} className={valor.activo ? '' : 'active'} onClick={() => cambiar({ activo: false })}>Las 24 hs</button>
+          <button type="button" role="radio" aria-checked={valor.activo} className={valor.activo ? 'active' : ''} onClick={() => cambiar({ activo: true })}>En un horario</button>
+        </div>
+        {valor.activo && (
+          <div className="horario-rango">
+            <label>De <input type="time" value={valor.desde} onChange={e => cambiar({ desde: e.target.value })} required /></label>
+            <label>a <input type="time" value={valor.hasta} onChange={e => cambiar({ hasta: e.target.value })} required /></label>
+          </div>
+        )}
+        <button type="submit" className="btn btn-primary" disabled={guardando || !sucio}><Icon name="save" /> {guardando ? 'Guardando…' : 'Guardar'}</button>
+      </form>
+      <p className="alertas-nota">
+        Hora de Argentina. Los chats en Atención Humana o con el bot pausado no se responden solos al abrir.
+        WhatsApp deja contestar hasta 24 hs después del último mensaje del cliente: lo que tenga más de 24 hs ya no se responde.
+      </p>
+    </div>
   );
 }
 

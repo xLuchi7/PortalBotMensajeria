@@ -15,6 +15,7 @@ import { EventosContext, TIPOS_EVENTO, useEnVivo, useFuenteEventos } from '../li
 const GRUPOS = [
   { titulo: null, items: [
     { ruta: 'inicio', label: 'Inicio', icono: 'home' },
+    { ruta: 'dashboard', label: 'Dashboard', icono: 'barChart' },
   ] },
   { titulo: 'Atención', items: [
     { ruta: 'chats', label: 'Chats', icono: 'message', contador: 'chats', ayuda: 'esperan tu respuesta' },

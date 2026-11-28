@@ -17,6 +17,7 @@ import Negocio from './pages/Negocio.jsx';
 import Aprendizajes from './pages/Aprendizajes.jsx';
 import Integraciones from './pages/Integraciones.jsx';
 import Logs from './pages/Logs.jsx';
+import Dashboard from './pages/Dashboard.jsx';
 import NoEncontrada from './pages/NoEncontrada.jsx';
 
 function PantallaCarga() {
@@ -65,6 +66,7 @@ export default function App() {
         <Route path="clientes/:clienteId">
           <Route index element={<Navigate to="inicio" replace />} />
           <Route path="inicio" element={<InicioCliente />} />
+          <Route path="dashboard" element={<Dashboard />} />
           <Route path="chats" element={<Chats key="chats" />} />
           <Route path="mensajes" element={<RedirMensajes />} />
           <Route path="atencion-humana" element={<Chats modo="humano" key="humano" />} />

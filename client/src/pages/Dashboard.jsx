@@ -1203,9 +1203,14 @@ function FormMp({ clienteId, data, onClose, onGuardado }) {
           <input type="password" value={token} onChange={e => setToken(e.target.value)} placeholder="APP_USR-…" autoComplete="off" />
         </label>
         <ol>
-          <li>Entrá a <strong>mercadopago.com/developers</strong> con la cuenta del negocio → <strong>Tus integraciones</strong> → Crear aplicación (cualquier nombre).</li>
-          <li>En la aplicación, abrí <strong>Credenciales de producción</strong> y copiá el <strong>Access Token</strong> (empieza con <code>APP_USR-</code>).</li>
+          <li>Entrá a <strong>mercadopago.com.ar/developers</strong> con la cuenta de Mercado Pago del negocio (la que recibe los cobros) y tocá <strong>Integraciones</strong>, arriba a la derecha.</li>
+          <li>Tocá <strong>Crear aplicación</strong> → <strong>Crear manualmente</strong> (en el panel de integración).</li>
+          <li>En <strong>Elegí una solución para integrar</strong> elegí <strong>Checkout Pro</strong> (no “Plataformas de e-commerce”, aunque vendas con Shopify).</li>
+          <li>En <strong>Tipo de API</strong> dejá <strong>Preferences</strong>. Ponele un nombre (ej. “Portal”), aceptá los términos y tocá <strong>Crear aplicación</strong>.</li>
+          <li>En la aplicación, andá a <strong>Credenciales</strong> → <strong>Producción</strong> → <strong>Activar ambiente de producción</strong>. Completá el rubro y la web del negocio, aceptá la Declaración de Privacidad y los Términos y tocá <strong>Activar</strong>.</li>
+          <li>Con <strong>Producción</strong> seleccionado, copiá el <strong>Access Token</strong> (empieza con <code>APP_USR-</code>) y pegalo acá arriba.</li>
         </ol>
+        <p className="field-hint">Da igual cómo cobre tu tienda: el token solo sirve para leer los pagos de la cuenta, no se usa para cobrar.</p>
         <div className="modal-actions is-inline">
           <button type="submit" className="btn btn-outline" disabled={guardando || !token.trim()}>{guardando ? 'Probando conexión…' : 'Conectar con este token'}</button>
         </div>
